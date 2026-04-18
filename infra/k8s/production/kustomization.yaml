@@ -4,19 +4,19 @@ kind: Kustomization
 namespace: madlab
 
 resources:
-  - namespace.yaml
-  - postgres-statefulset.yaml
-  - postgres-service.yaml
-  - server-deployment.yaml
-  - server-service.yaml
-  - client-deployment.yaml
-  - client-service.yaml
-  - network-policies.yaml
+- namespace.yaml
+- postgres-statefulset.yaml
+- postgres-service.yaml
+- server-deployment.yaml
+- server-service.yaml
+- client-deployment.yaml
+- client-service.yaml
+- network-policies.yaml
 
 images:
-  - name: ghcr.io/madfam-org/accionables-madlab-client
-    newName: ghcr.io/madfam-org/accionables-madlab-client
-    newTag: latest
-  - name: ghcr.io/madfam-org/accionables-madlab-server
-    newName: ghcr.io/madfam-org/accionables-madlab-server
-    newTag: latest
+- digest: sha256:6296a8975099542ba4e79d219dd6d24cc23fb4dc37af5096a3ca5e33f34d18d7
+  name: ghcr.io/madfam-org/accionables-madlab-client
+  newName: ghcr.io/madfam-org/accionables-madlab-client
+- digest: sha256:f6ac5bc6e2d99411eaaf9c5616962c010937f475b629219ab87039ca6eaf9528
+  name: ghcr.io/madfam-org/accionables-madlab-server
+  newName: ghcr.io/madfam-org/accionables-madlab-server

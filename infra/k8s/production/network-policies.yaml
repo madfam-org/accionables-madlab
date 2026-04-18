@@ -51,25 +51,6 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-server-to-postgres
-  namespace: madlab
-spec:
-  podSelector:
-    matchLabels:
-      app: madlab-postgres
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app: madlab-server
-      ports:
-        - protocol: TCP
-          port: 5432
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
   name: allow-egress-dns-https
   namespace: madlab
 spec:
@@ -96,6 +77,12 @@ spec:
         - protocol: TCP
           port: 3001
         - protocol: TCP
-          port: 5432
-        - protocol: TCP
           port: 80
+    # Egress to shared Postgres in data namespace (replaces per-app StatefulSet).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+      ports:
+        - protocol: TCP
+          port: 5432

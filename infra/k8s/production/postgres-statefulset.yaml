@@ -31,6 +31,7 @@ spec:
             # same caps the enclii platform postgres uses (see
             # enclii/infra/k8s/platform-infra/postgres.yaml).
             allowPrivilegeEscalation: false
+            privileged: false
             capabilities:
               drop: [ALL]
               add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]

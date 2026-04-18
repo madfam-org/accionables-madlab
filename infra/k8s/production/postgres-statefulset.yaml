@@ -23,6 +23,17 @@ spec:
       containers:
         - name: postgres
           image: docker.io/library/postgres:16-alpine
+          securityContext:
+            # Kyverno autogen-drop-all-capabilities requires drop:[ALL].
+            # Postgres's initdb (first boot on empty PVC) needs CHOWN +
+            # SETGID + SETUID + FOWNER + DAC_OVERRIDE to fix ownership
+            # on the data dir before dropping to uid 999. These are the
+            # same caps the enclii platform postgres uses (see
+            # enclii/infra/k8s/platform-infra/postgres.yaml).
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
           ports:
             - containerPort: 5432
           env:

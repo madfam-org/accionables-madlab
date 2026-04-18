@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: madlab-server
+  namespace: madlab
+  labels:
+    app: madlab-server
+    app.kubernetes.io/name: madlab-server
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: madfam-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: madlab-server
+  template:
+    metadata:
+      labels:
+        app: madlab-server
+        app.kubernetes.io/name: madlab-server
+        app.kubernetes.io/part-of: madfam-platform
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      imagePullSecrets:
+        - name: ghcr-credentials
+      containers:
+        - name: server
+          image: ghcr.io/madfam-org/accionables-madlab-server:latest
+          ports:
+            - containerPort: 3001
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3001"
+            - name: HOST
+              value: 0.0.0.0
+          envFrom:
+            - secretRef:
+                name: accionables-madlab-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: false
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+            periodSeconds: 30

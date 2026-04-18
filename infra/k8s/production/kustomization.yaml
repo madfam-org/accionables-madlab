@@ -5,8 +5,6 @@ namespace: madlab
 
 resources:
 - namespace.yaml
-- postgres-statefulset.yaml
-- postgres-service.yaml
 - server-deployment.yaml
 - server-service.yaml
 - client-deployment.yaml

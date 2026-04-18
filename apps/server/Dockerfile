@@ -1,94 +1,45 @@
-# ============================================================================
-# Multi-stage Dockerfile for MADLAB Backend API
-# Optimized for both development and production
-# ============================================================================
+# syntax=docker/dockerfile:1.7
+#
+# Build context: repo root. See .github/workflows/enclii-build.yml.
+# Monorepo: npm workspaces at apps/* — root package.json owns the lockfile.
 
-# ============================================================================
-# Stage 1: Base Image
-# ============================================================================
-FROM node:20-alpine AS base
-
+FROM node:20-alpine AS deps
 WORKDIR /app
-
-# Install production dependencies only
-RUN apk add --no-cache \
-    tini \
-    dumb-init
-
-# ============================================================================
-# Stage 2: Dependencies
-# ============================================================================
-FROM base AS dependencies
-
-# Copy package files
+RUN apk add --no-cache libc6-compat tini dumb-init
 COPY package.json package-lock.json ./
+COPY apps/client/package.json ./apps/client/
+COPY apps/server/package.json ./apps/server/
+RUN npm ci --workspaces --include-workspace-root
 
-# Install all dependencies (including dev dependencies for build)
-RUN npm ci
-
-# ============================================================================
-# Stage 3: Build
-# ============================================================================
-FROM dependencies AS build
-
-# Copy source code
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/server/node_modules ./apps/server/node_modules
 COPY . .
+RUN npm run build --workspace=apps/server
 
-# Build TypeScript
-RUN npm run build
-
-# ============================================================================
-# Stage 4: Development
-# ============================================================================
-FROM dependencies AS development
-
-# Copy source code
-COPY . .
-
-# Expose port
-EXPOSE 3001
-
-# Use tini for proper signal handling
-ENTRYPOINT ["/sbin/tini", "--"]
-
-# Start development server with hot reload
-CMD ["npm", "run", "dev"]
-
-# ============================================================================
-# Stage 5: Production
-# ============================================================================
-FROM base AS production
-
-# Set NODE_ENV
+FROM node:20-alpine AS production
 ENV NODE_ENV=production
-
-# Copy package files and install production dependencies only
-COPY package.json package-lock.json ./
-RUN npm ci --only=production && npm cache clean --force
-
-# Copy built application from build stage
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/drizzle ./drizzle
-
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
+WORKDIR /app
+RUN apk add --no-cache dumb-init && \
+    addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Change ownership
-RUN chown -R nodejs:nodejs /app
+COPY package.json package-lock.json ./
+COPY apps/server/package.json ./apps/server/
+RUN npm ci --workspaces --include-workspace-root --omit=dev && npm cache clean --force
 
-# Switch to non-root user
+COPY --from=build /app/apps/server/dist ./apps/server/dist
+COPY --from=build /app/apps/server/drizzle ./apps/server/drizzle
+
+RUN chown -R nodejs:nodejs /app
 USER nodejs
 
-# Expose port
+WORKDIR /app/apps/server
 EXPOSE 3001
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3001/api/health || exit 1
 
-# Use dumb-init for proper signal handling
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-
-# Start production server
 CMD ["node", "dist/index.js"]

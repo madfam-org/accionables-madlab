@@ -72,8 +72,13 @@ jobs:
             picked="$services_all"
           fi
 
-          echo "matrix=$picked" >> "$GITHUB_OUTPUT"
-          echo "any=$(echo "$picked" | jq 'length > 0')" >> "$GITHUB_OUTPUT"
+          # Always compact before emitting — services_all is pretty-printed
+          # in the source for readability, but GITHUB_OUTPUT rejects multiline
+          # values without a heredoc-style delimiter.
+          picked_compact=$(echo "$picked" | jq -c .)
+
+          echo "matrix=$picked_compact" >> "$GITHUB_OUTPUT"
+          echo "any=$(echo "$picked_compact" | jq 'length > 0')" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.service.name }}

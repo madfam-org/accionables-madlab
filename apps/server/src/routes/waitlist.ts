@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '../config/database.js';
 import { waitlist } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
+import { verifyJWT, requireRoles } from '../middleware/auth.js';
 
 // Validation schema
 const waitlistSignupSchema = z.object({
@@ -124,10 +125,13 @@ export async function waitlistRoutes(fastify: FastifyInstance) {
     });
 
     /**
-     * GET /api/waitlist/stats (admin only - for future use)
+     * GET /api/waitlist/stats (admin only)
+     * Requires a Janua JWT with `admin` in the `roles` claim.
      */
-    fastify.get('/waitlist/stats', async (_request, reply) => {
-        // TODO: Add admin auth check
+    fastify.get(
+        '/waitlist/stats',
+        { preHandler: [verifyJWT, requireRoles('admin')] },
+        async (_request, reply) => {
         try {
             const all = await db.select().from(waitlist);
 

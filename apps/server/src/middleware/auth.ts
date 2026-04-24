@@ -1,8 +1,9 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { getJanuaConfig, fetchJWKS } from '../config/auth.js';
+import { createRemoteJWKSet, jwtVerify, errors as joseErrors, type JWTPayload as JoseJWTPayload } from 'jose';
+import { getJanuaConfig } from '../config/auth.js';
 
 export interface JWTPayload {
-  sub: string; // Janua user ID
+  sub: string;
   email: string;
   name?: string;
   email_verified?: boolean;
@@ -12,41 +13,41 @@ export interface JWTPayload {
   exp?: number;
 }
 
-/**
- * Decode base64url to string
- */
-function base64UrlDecode(input: string): string {
-  const base64 = input.replace(/-/g, '+').replace(/_/g, '/');
-  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
-  return Buffer.from(base64 + padding, 'base64').toString('utf-8');
+const DEV_MOCK_TOKEN = 'dev-token-mock-user';
+
+// Lazily-initialized JWKS so a bad/missing config fails loudly on first request,
+// not at module load.
+let jwksResolver: ReturnType<typeof createRemoteJWKSet> | null = null;
+let jwksResolverKey: string | null = null;
+
+function getJWKS(jwksUri: string) {
+  if (jwksResolver && jwksResolverKey === jwksUri) return jwksResolver;
+  jwksResolver = createRemoteJWKSet(new URL(jwksUri), {
+    cacheMaxAge: 60 * 60 * 1000,
+    cooldownDuration: 30 * 1000,
+  });
+  jwksResolverKey = jwksUri;
+  return jwksResolver;
+}
+
+function toAppPayload(payload: JoseJWTPayload): JWTPayload {
+  return {
+    sub: String(payload.sub ?? ''),
+    email: String(payload.email ?? ''),
+    name: payload.name as string | undefined,
+    email_verified: payload.email_verified as boolean | undefined,
+    org_id: payload.org_id as string | undefined,
+    roles: payload.roles as string[] | undefined,
+    iat: payload.iat,
+    exp: payload.exp,
+  };
 }
 
 /**
- * Parse JWT without verification (for header/payload extraction)
- */
-function parseJWT(token: string): { header: Record<string, unknown>; payload: Record<string, unknown> } | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-
-    const header = JSON.parse(base64UrlDecode(parts[0]));
-    const payload = JSON.parse(base64UrlDecode(parts[1]));
-
-    return { header, payload };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * JWT verification middleware with Janua integration
+ * JWT verification middleware with full RS256 signature verification via Janua JWKS.
  *
- * Flow:
- * 1. Extract token from Authorization header
- * 2. In development: accept mock token for easy testing
- * 3. In production: verify RS256 signature using Janua's JWKS
- * 4. Validate token claims (exp, iss, aud)
- * 5. Attach user info to request
+ * Dev mock (`dev-token-mock-user`) is only accepted when NODE_ENV === 'development'.
+ * Production requires a valid Janua config and a signed token matching iss+aud.
  */
 export async function verifyJWT(
   request: FastifyRequest,
@@ -54,7 +55,6 @@ export async function verifyJWT(
 ): Promise<void> {
   const isDevelopment = process.env.NODE_ENV === 'development';
 
-  // Extract token from Authorization header
   const authHeader = request.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return reply.code(401).send({
@@ -63,10 +63,11 @@ export async function verifyJWT(
     });
   }
 
-  const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+  const token = authHeader.substring(7);
 
-  // DEVELOPMENT MODE: Accept hardcoded mock token
-  if (isDevelopment && token === 'dev-token-mock-user') {
+  // Dev-only escape hatch. Explicitly gated on NODE_ENV so a production misconfig
+  // can't accidentally accept this string.
+  if (isDevelopment && token === DEV_MOCK_TOKEN) {
     request.user = {
       sub: 'mock-user-id-12345',
       email: 'aldo@madlab.io',
@@ -75,117 +76,85 @@ export async function verifyJWT(
     return;
   }
 
-  // Parse the JWT
-  const parsed = parseJWT(token);
-  if (!parsed) {
-    return reply.code(401).send({
-      error: 'Unauthorized',
-      message: 'Invalid token format',
-    });
-  }
-
-  const { payload } = parsed;
-
-  // Check token expiration
-  const now = Math.floor(Date.now() / 1000);
-  if (payload.exp && (payload.exp as number) < now) {
-    return reply.code(401).send({
-      error: 'Unauthorized',
-      message: 'Token expired',
-    });
-  }
-
-  // Get Janua configuration
   const januaConfig = getJanuaConfig();
+  if (!januaConfig) {
+    // Fail closed: if Janua isn't configured, no real tokens can be verified.
+    // Refuse rather than silently accepting unverified JWTs (the prior behavior).
+    request.log.error('verifyJWT called but Janua is not configured (JANUA_ISSUER/AUDIENCE/JWKS_URI missing)');
+    return reply.code(500).send({
+      error: 'Server misconfigured',
+      message: 'Authentication is not configured',
+    });
+  }
 
-  // PRODUCTION MODE: Verify with Janua
-  if (!isDevelopment && januaConfig) {
-    try {
-      // Validate issuer
-      if (payload.iss !== januaConfig.issuer) {
-        return reply.code(401).send({
-          error: 'Unauthorized',
-          message: 'Invalid token issuer',
-        });
-      }
-
-      // Validate audience
-      const audience = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-      if (!audience.includes(januaConfig.audience)) {
-        return reply.code(401).send({
-          error: 'Unauthorized',
-          message: 'Invalid token audience',
-        });
-      }
-
-      // Fetch JWKS and verify signature
-      // Note: Full cryptographic verification requires the jose library
-      // For now, we validate claims and trust the token structure
-      // To enable full verification: npm install jose
-      // Then use: import { jwtVerify, createRemoteJWKSet } from 'jose'
-      await fetchJWKS(); // Pre-fetch JWKS for future verification
-
-      request.log.debug({ userId: payload.sub }, 'JWT validated via Janua');
-    } catch (error) {
-      request.log.error(error, 'JWT verification failed');
+  try {
+    const { payload } = await jwtVerify(token, getJWKS(januaConfig.jwksUri), {
+      issuer: januaConfig.issuer,
+      audience: januaConfig.audience,
+      algorithms: ['RS256'],
+    });
+    request.user = toAppPayload(payload);
+  } catch (error) {
+    // Map jose's typed errors to a stable 401 response without leaking details.
+    if (
+      error instanceof joseErrors.JWTExpired ||
+      error instanceof joseErrors.JWTClaimValidationFailed ||
+      error instanceof joseErrors.JWSSignatureVerificationFailed ||
+      error instanceof joseErrors.JWSInvalid ||
+      error instanceof joseErrors.JWTInvalid
+    ) {
+      request.log.info({ err: error.code }, 'JWT rejected');
       return reply.code(401).send({
         error: 'Unauthorized',
-        message: 'Token verification failed',
+        message: 'Invalid or expired token',
       });
     }
+    request.log.error(error, 'JWT verification failed');
+    return reply.code(401).send({
+      error: 'Unauthorized',
+      message: 'Token verification failed',
+    });
   }
-
-  // DEVELOPMENT MODE without mock token: accept any valid-looking JWT
-  if (isDevelopment && !januaConfig) {
-    request.log.debug('Development mode: accepting JWT without verification');
-  }
-
-  // Attach user info to request
-  request.user = {
-    sub: payload.sub as string,
-    email: payload.email as string,
-    name: payload.name as string | undefined,
-    email_verified: payload.email_verified as boolean | undefined,
-    org_id: payload.org_id as string | undefined,
-    roles: payload.roles as string[] | undefined,
-    iat: payload.iat as number | undefined,
-    exp: payload.exp as number | undefined,
-  };
 }
 
 /**
- * Optional auth middleware - attaches user if token present, but doesn't require it
+ * Optional auth — attaches user if a valid token is present, otherwise continues.
+ * Still performs full signature verification when a token is supplied.
  */
 export async function optionalAuth(
   request: FastifyRequest,
   _reply: FastifyReply,
 ): Promise<void> {
   const authHeader = request.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return; // No auth, continue without user
-  }
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return;
 
   const token = authHeader.substring(7);
-  const parsed = parseJWT(token);
+  const isDevelopment = process.env.NODE_ENV === 'development';
 
-  if (parsed && parsed.payload) {
-    const { payload } = parsed;
+  if (isDevelopment && token === DEV_MOCK_TOKEN) {
+    request.user = {
+      sub: 'mock-user-id-12345',
+      email: 'aldo@madlab.io',
+      name: 'Aldo (Dev Mode)',
+    };
+    return;
+  }
 
-    // Check expiration
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.exp && (payload.exp as number) > now) {
-      request.user = {
-        sub: payload.sub as string,
-        email: payload.email as string,
-        name: payload.name as string | undefined,
-      };
-    }
+  const januaConfig = getJanuaConfig();
+  if (!januaConfig) return; // no config → behave like no token
+
+  try {
+    const { payload } = await jwtVerify(token, getJWKS(januaConfig.jwksUri), {
+      issuer: januaConfig.issuer,
+      audience: januaConfig.audience,
+      algorithms: ['RS256'],
+    });
+    request.user = toAppPayload(payload);
+  } catch {
+    // Intentionally silent — optional auth.
   }
 }
 
-/**
- * Role-based access control middleware factory
- */
 export function requireRoles(...requiredRoles: string[]) {
   return async function (request: FastifyRequest, reply: FastifyReply): Promise<void> {
     if (!request.user) {
@@ -207,9 +176,6 @@ export function requireRoles(...requiredRoles: string[]) {
   };
 }
 
-/**
- * Fastify plugin to add user type to request
- */
 declare module 'fastify' {
   interface FastifyRequest {
     user?: JWTPayload;

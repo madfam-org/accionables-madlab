@@ -129,52 +129,64 @@ Comprehensive documentation is available in `/docs/`:
 - **[Guides](./docs/guides/)** - Developer workflow guides
 - **[Tutorials](./docs/tutorials/)** - Step-by-step learning guides
 
-## Stability Remediation — Wave 0 (2026-04-24)
+## Stability Remediation — Waves 0 & 1 (2026-04-24)
 
-Wave 0 shipped real authentication, route gating, request validation, and a
-test suite. 46 server tests cover the auth/validation pipeline. Open follow-ups
-remain — see task list for the full backlog.
+Combined: real authentication, full route gating, request validation, 76
+server tests + 147 client tests, bootstrap hardened, client bearer/401 flow,
+lint unblocked, vulns triaged.
 
 ### Resolved
 - ~~🔴 Trust-the-payload JWT verification~~ — `apps/server/src/middleware/auth.ts`
   now performs real RS256 signature verification via `jose` + JWKS. The
   dev-mock token `dev-token-mock-user` is strictly gated on
   `NODE_ENV === 'development'` and will not be accepted in prod. Missing Janua
-  config now **fails closed** (500) instead of silently accepting tokens.
+  config now **fails closed** instead of silently accepting tokens.
 - ~~🔴 Unauthenticated CRUD on tasks/projects/agents~~ — every mutating route
   and most reads now run `{ preHandler: verifyJWT }`. Public surface is only
   `/health`, `/agents/status`, `POST /waitlist`, `GET /waitlist/count`.
 - ~~🔴 Unauthenticated LLM endpoints~~ — `POST /agents/breakdown` and
-  `POST /agents/draft` now require auth. Critical because with `AI_PROVIDER`
-  set to `groq`/`together`/`custom`, these burn API keys.
-- ~~🟡 Routes bypassed Zod validation~~ — every handler now validates body,
-  query, and params via `schemas/validation.ts`. `as any` casts removed from
-  `tasks.ts`; pagination (`limit`/`offset`) enforced.
-- ~~🟡 `createProjectSchema` shape didn't match the DB~~ — schema reconciled to
-  match the `projects` table (removed phantom `eventDate`/`eventType`/
-  `ownerId`/`settings`). `taskStatusSchema` order re-aligned with
-  `taskStatusEnum`. Both schemas now have regression tests.
-- ~~🟡 Latent routing bug~~ — `/tasks/bulk` registered before `/tasks/:id`
-  (previously would match "bulk" as a UUID param).
-- ~~🔴 R3: Unauthenticated admin endpoint~~ — Fixed 2026-04-23: `/waitlist/stats`
-  now runs `[verifyJWT, requireRoles('admin')]`.
+  `POST /agents/draft` now require auth. With `AI_PROVIDER` set to
+  `groq`/`together`/`custom`, these were burning API keys publicly.
+- ~~🔴 `createdBy` hardcoded in `POST /projects`~~ — now calls
+  `upsertLocalUser(request.user!)` from `src/services/users.ts`, which does a
+  single `INSERT … ON CONFLICT` on `users.janua_id`. Project creation no
+  longer FK-fails once real auth is on.
+- ~~🔴 CORS silently broken in prod~~ — `src/config/env.ts`
+  `resolveCorsOrigins()` throws at boot if `ALLOWED_ORIGINS` is empty in
+  production rather than silently locking every browser out. Server also
+  refuses to start in prod without `JANUA_*` vars set.
+- ~~🟡 Routes bypassed Zod validation~~ — every handler validates body,
+  query, and params via `schemas/validation.ts`. `as any` casts removed;
+  pagination enforced via `limit`/`offset`.
+- ~~🟡 `createProjectSchema` drift from DB~~ — reconciled; regression tests
+  pin it. `taskStatusSchema` order matches `taskStatusEnum`.
+- ~~🟡 Client never sent bearer tokens~~ — `apps/client/src/api/client.ts`
+  request interceptor attaches `Authorization: Bearer <token>`; 401 response
+  clears auth state and invokes a logout handler registered by AuthContext.
+- ~~🟡 Latent routing bug~~ — `/tasks/bulk` now registers before `/tasks/:id`.
+- ~~🟡 No global error handler~~ — `src/config/errorHandler.ts` returns a
+  generic 500 for server errors (no stack leak) and echoes 4xx messages.
+- ~~🟡 No rate limiting~~ — `@fastify/rate-limit` mounted globally at
+  300 req/min, using forwarded-for for identification.
+- ~~🟡 Baseline ESLint broken~~ — root `.eslintrc.js` deleted; workspaces own
+  their configs; both `npm run lint --workspace=apps/...` pass (warnings only).
+- ~~🟡 npm vulns — auto-fixable tier~~ — 25 → 9 remaining (all 3 remaining
+  need major-version bumps, tracked separately).
+- ~~🔴 R3: Unauthenticated admin endpoint~~ — `/waitlist/stats` gated with
+  `[verifyJWT, requireRoles('admin')]`.
 
 ### Outstanding
-- **🟡 UI: Unauthorized redirect TODO** — `apps/client/src/api/client.ts:50`
-  `// TODO: Handle unauthorized (redirect to login)`. Users hit 401 silently.
-  Also the request interceptor never attaches a bearer token — the client
-  currently sends no auth. Wave 1.
-- **🔴 `createdBy` hardcoded in `POST /projects`** — `apps/server/src/routes/
-  projects.ts:151` still uses `'mock-user-id-12345'` because the Janua `sub`
-  claim is not a local `users.id` yet. Once `verifyJWT` is active, project
-  creation will FK-fail until a Janua→local-user upsert is implemented.
-  **Blocks prod deploy of POST /projects.**
-- **🟡 npm vulnerabilities** — 25 reported (13 high, 1 critical) across both
-  workspaces after `jose` + `vitest` installs. Triage before next prod deploy.
-- **🟡 Baseline lint is broken** — `npm run lint --workspace=apps/server`
-  fails because the root `.eslintrc.js` references `eslint-plugin-jsx-a11y`
-  (frontend-only) and it leaks into server lint resolution. Pre-existing.
-- **🟡 No CI gate** — nothing forces type-check + tests to pass on PRs.
+- **🟡 Auth storage key drift** — `AuthContext` stores under `madlab_auth`
+  (JSON blob), but `api/client.ts` reads from `auth_token`/`auth_user`. Until
+  unified, bearer header is empty for existing users. Task #21.
+- **🟡 3 breaking-bump vulns remain** — `@fastify/jwt` → 10 (closes fast-jwt
+  CRITICAL iss-validation), `fastify` → 5 (sendWebStream DoS), `drizzle-orm`
+  → 0.45 (SQL injection via identifiers). Each needs its own focused PR.
+  Task #22.
+- **🟡 6 jsx-a11y violations** surfaced once lint started working; rules
+  downgraded to warnings to keep CI green. Task #20.
+- **🟡 No server SSL/retry on DB pool** — Task #9.
+- **🟡 No observability SDK** — stdout logs only. Task #12.
 
 ### New server env vars
 `verifyJWT` requires these in production (fail-closed if missing):

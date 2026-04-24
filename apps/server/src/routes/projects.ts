@@ -3,6 +3,7 @@ import { eq, count } from 'drizzle-orm';
 import { db } from '../config/database.js';
 import { projects, tasks, projectMembers, users } from '../db/schema.js';
 import { verifyJWT } from '../middleware/auth.js';
+import { upsertLocalUser } from '../services/users.js';
 import {
   idParamSchema,
   createProjectSchema,
@@ -136,8 +137,8 @@ export async function projectRoutes(fastify: FastifyInstance) {
 
   /**
    * POST /api/projects
-   * createdBy is intentionally NOT accepted from the client — task #17 will
-   * derive it from request.user via a Janua→local user upsert.
+   * createdBy is derived from the authenticated user via a Janua→local-user
+   * upsert. The client cannot supply it.
    */
   fastify.post('/projects', { preHandler: verifyJWT }, async (request, reply) => {
     const body = validateRequest(createProjectSchema, request.body);
@@ -150,9 +151,16 @@ export async function projectRoutes(fastify: FastifyInstance) {
     }
     const input = body.data;
 
-    // TEMPORARY: hardcoded mock user until task #17 lands the Janua sync.
-    // Once #17 ships, replace with: const createdBy = await upsertLocalUser(request.user!);
-    const createdBy = 'mock-user-id-12345';
+    let createdBy: string;
+    try {
+      createdBy = await upsertLocalUser(request.user!);
+    } catch (error) {
+      fastify.log.error(error, 'Failed to upsert local user for project creation');
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to resolve authenticated user',
+      });
+    }
 
     try {
       const newProject = await db

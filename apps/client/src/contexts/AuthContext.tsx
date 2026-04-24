@@ -21,6 +21,7 @@
  */
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { setAuthLogoutHandler } from '../api/client';
 
 // ============================================================================
 // Types
@@ -245,6 +246,14 @@ export function AuthProvider({ children, januaUrl = JANUA_URL }: AuthProviderPro
         // Optionally redirect to Janua logout
         // window.location.href = `${januaUrl}/logout?redirect_uri=${window.location.origin}`;
     }, []);
+
+    // Register signOut with the API client so the axios 401 interceptor can
+    // trigger logout when the server rejects a token. Cleanup on unmount to
+    // avoid stale handler references during HMR / test teardown.
+    useEffect(() => {
+        setAuthLogoutHandler(signOut);
+        return () => setAuthLogoutHandler(null);
+    }, [signOut]);
 
     const refreshSession = useCallback(async (): Promise<boolean> => {
         if (!tokens?.refreshToken) return false;

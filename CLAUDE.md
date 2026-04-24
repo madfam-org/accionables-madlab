@@ -57,8 +57,10 @@ npm run dev:server       # Start API server (localhost:3001)
 npm run dev:all          # Start both concurrently
 
 # Testing
-npm test                 # Run unit tests
-npm run test:e2e         # Run Playwright E2E tests
+npm test                          # Run unit tests in all workspaces
+npm test --workspace=apps/server  # Server Vitest suite (auth, validation, routes)
+npm test --workspace=apps/client  # Client Vitest suite (hooks, components, utils)
+npm run test:e2e                  # Run Playwright E2E tests
 
 # Building
 npm run build            # Build all workspaces
@@ -127,9 +129,58 @@ Comprehensive documentation is available in `/docs/`:
 - **[Guides](./docs/guides/)** - Developer workflow guides
 - **[Tutorials](./docs/tutorials/)** - Step-by-step learning guides
 
-## Known Issues — Audit 2026-04-23
+## Stability Remediation — Wave 0 (2026-04-24)
 
-See `/Users/aldoruizluna/labspace/claudedocs/ECOSYSTEM_AUDIT_2026-04-23.md` for the full ecosystem audit.
+Wave 0 shipped real authentication, route gating, request validation, and a
+test suite. 46 server tests cover the auth/validation pipeline. Open follow-ups
+remain — see task list for the full backlog.
 
-- ~~**🔴 R3: Unauthenticated admin endpoint**~~ — Fixed 2026-04-23: `GET /waitlist/stats` now runs `[verifyJWT, requireRoles('admin')]` as fastify `preHandler`.
-- **🟡 UI: Unauthorized redirect TODO** — `apps/client/src/api/client.ts:50` `// TODO: Handle unauthorized (redirect to login)`. Users hit 401 silently.
+### Resolved
+- ~~🔴 Trust-the-payload JWT verification~~ — `apps/server/src/middleware/auth.ts`
+  now performs real RS256 signature verification via `jose` + JWKS. The
+  dev-mock token `dev-token-mock-user` is strictly gated on
+  `NODE_ENV === 'development'` and will not be accepted in prod. Missing Janua
+  config now **fails closed** (500) instead of silently accepting tokens.
+- ~~🔴 Unauthenticated CRUD on tasks/projects/agents~~ — every mutating route
+  and most reads now run `{ preHandler: verifyJWT }`. Public surface is only
+  `/health`, `/agents/status`, `POST /waitlist`, `GET /waitlist/count`.
+- ~~🔴 Unauthenticated LLM endpoints~~ — `POST /agents/breakdown` and
+  `POST /agents/draft` now require auth. Critical because with `AI_PROVIDER`
+  set to `groq`/`together`/`custom`, these burn API keys.
+- ~~🟡 Routes bypassed Zod validation~~ — every handler now validates body,
+  query, and params via `schemas/validation.ts`. `as any` casts removed from
+  `tasks.ts`; pagination (`limit`/`offset`) enforced.
+- ~~🟡 `createProjectSchema` shape didn't match the DB~~ — schema reconciled to
+  match the `projects` table (removed phantom `eventDate`/`eventType`/
+  `ownerId`/`settings`). `taskStatusSchema` order re-aligned with
+  `taskStatusEnum`. Both schemas now have regression tests.
+- ~~🟡 Latent routing bug~~ — `/tasks/bulk` registered before `/tasks/:id`
+  (previously would match "bulk" as a UUID param).
+- ~~🔴 R3: Unauthenticated admin endpoint~~ — Fixed 2026-04-23: `/waitlist/stats`
+  now runs `[verifyJWT, requireRoles('admin')]`.
+
+### Outstanding
+- **🟡 UI: Unauthorized redirect TODO** — `apps/client/src/api/client.ts:50`
+  `// TODO: Handle unauthorized (redirect to login)`. Users hit 401 silently.
+  Also the request interceptor never attaches a bearer token — the client
+  currently sends no auth. Wave 1.
+- **🔴 `createdBy` hardcoded in `POST /projects`** — `apps/server/src/routes/
+  projects.ts:151` still uses `'mock-user-id-12345'` because the Janua `sub`
+  claim is not a local `users.id` yet. Once `verifyJWT` is active, project
+  creation will FK-fail until a Janua→local-user upsert is implemented.
+  **Blocks prod deploy of POST /projects.**
+- **🟡 npm vulnerabilities** — 25 reported (13 high, 1 critical) across both
+  workspaces after `jose` + `vitest` installs. Triage before next prod deploy.
+- **🟡 Baseline lint is broken** — `npm run lint --workspace=apps/server`
+  fails because the root `.eslintrc.js` references `eslint-plugin-jsx-a11y`
+  (frontend-only) and it leaks into server lint resolution. Pre-existing.
+- **🟡 No CI gate** — nothing forces type-check + tests to pass on PRs.
+
+### New server env vars
+`verifyJWT` requires these in production (fail-closed if missing):
+- `JANUA_ISSUER`
+- `JANUA_AUDIENCE`
+- `JANUA_JWKS_URI`
+
+In development, if these are unset and the request does NOT use the dev-mock
+token, the request 500s. This is intentional — no silent auth bypass.

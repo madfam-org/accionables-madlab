@@ -9,19 +9,19 @@ export const idParamSchema = z.object({
     id: z.string().uuid('Invalid ID format'),
 });
 
-// Task status enum
+// Task status enum — order mirrors db/schema.ts taskStatusEnum
 export const taskStatusSchema = z.enum([
     'not-started',
     'in-progress',
-    'blocked',
     'completed',
+    'blocked',
     'cancelled',
 ]);
 
 // Task difficulty enum
 export const taskDifficultySchema = z.enum(['easy', 'medium', 'hard', 'expert']);
 
-// Event type enum
+// Event type enum (used by agent breakdown requests, NOT by project schemas)
 export const eventTypeSchema = z.enum([
     'concert',
     'launch',
@@ -30,6 +30,15 @@ export const eventTypeSchema = z.enum([
     'retreat',
     'deadline',
     'custom',
+]);
+
+// Project status enum — mirrors db/schema.ts projectStatusEnum
+export const projectStatusSchema = z.enum([
+    'planning',
+    'active',
+    'on-hold',
+    'completed',
+    'archived',
 ]);
 
 /**
@@ -95,27 +104,31 @@ export const bulkUpdateTasksSchema = z.object({
 });
 
 /**
- * Project Schemas
+ * Project Schemas — mirror db/schema.ts projects table.
+ * createdBy is set server-side from the authenticated user, NOT from the client.
  */
 export const createProjectSchema = z.object({
-    name: z.string().min(1, 'Name is required').max(200, 'Name too long'),
-    nameEn: z.string().max(200).optional(),
+    name: z.string().min(1, 'Name is required').max(255, 'Name too long'),
+    nameEn: z.string().max(255).optional(),
     description: z.string().max(5000).optional(),
     descriptionEn: z.string().max(5000).optional(),
-    eventDate: z.string().datetime('Invalid event date'),
-    eventType: eventTypeSchema.default('custom'),
-    ownerId: z.string().uuid().optional(),
-    settings: z.record(z.unknown()).default({}),
+    status: projectStatusSchema.default('planning'),
+    startDate: z.string().datetime().optional(),
+    targetEndDate: z.string().datetime().optional(),
+    endDate: z.string().datetime().optional(),
+    metadata: z.record(z.unknown()).default({}),
 });
 
 export const updateProjectSchema = z.object({
-    name: z.string().min(1).max(200).optional(),
-    nameEn: z.string().max(200).optional(),
+    name: z.string().min(1).max(255).optional(),
+    nameEn: z.string().max(255).optional(),
     description: z.string().max(5000).optional(),
     descriptionEn: z.string().max(5000).optional(),
-    eventDate: z.string().datetime().optional(),
-    eventType: eventTypeSchema.optional(),
-    settings: z.record(z.unknown()).optional(),
+    status: projectStatusSchema.optional(),
+    startDate: z.string().datetime().nullable().optional(),
+    targetEndDate: z.string().datetime().nullable().optional(),
+    endDate: z.string().datetime().nullable().optional(),
+    metadata: z.record(z.unknown()).optional(),
 });
 
 /**
@@ -152,15 +165,15 @@ export const reminderRequestSchema = z.object({
 });
 
 /**
- * Validation helper function
+ * Validation helper. Accepts any Zod schema and returns the parsed output type
+ * (after defaults + transforms), so callers get the correct post-parse type even
+ * when the schema's input type differs from its output (e.g. string → number
+ * via z.string().transform(Number)).
  */
-export function validateRequest<T>(schema: z.ZodSchema<T>, data: unknown): {
-    success: true;
-    data: T;
-} | {
-    success: false;
-    errors: z.ZodError['errors'];
-} {
+export function validateRequest<S extends z.ZodTypeAny>(
+    schema: S,
+    data: unknown,
+): { success: true; data: z.output<S> } | { success: false; errors: z.ZodError['errors'] } {
     const result = schema.safeParse(data);
     if (result.success) {
         return { success: true, data: result.data };

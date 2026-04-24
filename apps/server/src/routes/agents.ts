@@ -4,6 +4,7 @@ import {
     draftCommunicationSchema,
     validateRequest,
 } from '../schemas/validation.js';
+import { verifyJWT } from '../middleware/auth.js';
 
 /**
  * AI Provider Configuration
@@ -228,6 +229,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
      */
     fastify.post<{ Body: unknown }>(
         '/agents/breakdown',
+        { preHandler: verifyJWT },
         async (request, reply) => {
             const validation = validateRequest(breakdownRequestSchema, request.body);
             if (!validation.success) {
@@ -319,6 +321,7 @@ Please generate a comprehensive task breakdown. Respond with valid JSON only.`;
      */
     fastify.post<{ Body: unknown }>(
         '/agents/draft',
+        { preHandler: verifyJWT },
         async (request, reply) => {
             const validation = validateRequest(draftCommunicationSchema, request.body);
             if (!validation.success) {

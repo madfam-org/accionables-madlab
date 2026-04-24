@@ -2,33 +2,34 @@ import { FastifyInstance } from 'fastify';
 import { eq, count } from 'drizzle-orm';
 import { db } from '../config/database.js';
 import { projects, tasks, projectMembers, users } from '../db/schema.js';
+import { verifyJWT } from '../middleware/auth.js';
+import {
+  idParamSchema,
+  createProjectSchema,
+  validateRequest,
+} from '../schemas/validation.js';
 
 export async function projectRoutes(fastify: FastifyInstance) {
   /**
    * GET /api/projects
    * Get all projects with member counts and task statistics
    */
-  fastify.get('/projects', async (_request, reply) => {
+  fastify.get('/projects', { preHandler: verifyJWT }, async (_request, reply) => {
     try {
-      // Get all projects
       const allProjects = await db.select().from(projects);
 
-      // Enhance with statistics
       const projectsWithStats = await Promise.all(
         allProjects.map(async (project) => {
-          // Count tasks
           const taskCount = await db
             .select({ count: count() })
             .from(tasks)
             .where(eq(tasks.projectId, project.id));
 
-          // Count members
           const memberCount = await db
             .select({ count: count() })
             .from(projectMembers)
             .where(eq(projectMembers.projectId, project.id));
 
-          // Get tasks breakdown by status
           const tasksByStatus = await db
             .select({
               status: tasks.status,
@@ -70,17 +71,22 @@ export async function projectRoutes(fastify: FastifyInstance) {
 
   /**
    * GET /api/projects/:id
-   * Get a single project with full details
    */
-  fastify.get<{ Params: { id: string } }>('/projects/:id', async (request, reply) => {
-    try {
-      const { id } = request.params;
+  fastify.get('/projects/:id', { preHandler: verifyJWT }, async (request, reply) => {
+    const params = validateRequest(idParamSchema, request.params);
+    if (!params.success) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Validation failed',
+        details: params.errors,
+      });
+    }
 
-      // Get project
+    try {
       const project = await db
         .select()
         .from(projects)
-        .where(eq(projects.id, id))
+        .where(eq(projects.id, params.data.id))
         .limit(1);
 
       if (!project.length) {
@@ -90,7 +96,6 @@ export async function projectRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Get project members with user details
       const members = await db
         .select({
           id: projectMembers.id,
@@ -105,13 +110,12 @@ export async function projectRoutes(fastify: FastifyInstance) {
         })
         .from(projectMembers)
         .leftJoin(users, eq(projectMembers.userId, users.id))
-        .where(eq(projectMembers.projectId, id));
+        .where(eq(projectMembers.projectId, params.data.id));
 
-      // Get task count
       const taskCount = await db
         .select({ count: count() })
         .from(tasks)
-        .where(eq(tasks.projectId, id));
+        .where(eq(tasks.projectId, params.data.id));
 
       return reply.send({
         success: true,
@@ -132,35 +136,38 @@ export async function projectRoutes(fastify: FastifyInstance) {
 
   /**
    * POST /api/projects
-   * Create a new project
+   * createdBy is intentionally NOT accepted from the client — task #17 will
+   * derive it from request.user via a Janua→local user upsert.
    */
-  fastify.post<{
-    Body: {
-      name: string;
-      nameEn?: string;
-      description?: string;
-      descriptionEn?: string;
-      startDate?: string;
-      endDate?: string;
-      metadata?: Record<string, any>;
-    };
-  }>('/projects', async (request, reply) => {
-    try {
-      // TODO: Get actual user from JWT
-      // For now, use a placeholder
-      const createdBy = 'mock-user-id-12345'; // Replace with actual user ID from JWT
+  fastify.post('/projects', { preHandler: verifyJWT }, async (request, reply) => {
+    const body = validateRequest(createProjectSchema, request.body);
+    if (!body.success) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Validation failed',
+        details: body.errors,
+      });
+    }
+    const input = body.data;
 
+    // TEMPORARY: hardcoded mock user until task #17 lands the Janua sync.
+    // Once #17 ships, replace with: const createdBy = await upsertLocalUser(request.user!);
+    const createdBy = 'mock-user-id-12345';
+
+    try {
       const newProject = await db
         .insert(projects)
         .values({
-          name: request.body.name,
-          nameEn: request.body.nameEn,
-          description: request.body.description,
-          descriptionEn: request.body.descriptionEn,
-          startDate: request.body.startDate ? new Date(request.body.startDate) : undefined,
-          endDate: request.body.endDate ? new Date(request.body.endDate) : undefined,
+          name: input.name,
+          nameEn: input.nameEn,
+          description: input.description,
+          descriptionEn: input.descriptionEn,
+          status: input.status,
+          startDate: input.startDate ? new Date(input.startDate) : undefined,
+          targetEndDate: input.targetEndDate ? new Date(input.targetEndDate) : undefined,
+          endDate: input.endDate ? new Date(input.endDate) : undefined,
           createdBy,
-          metadata: request.body.metadata,
+          metadata: input.metadata,
         })
         .returning();
 

@@ -15,6 +15,6 @@ images:
 - digest: sha256:6a8891d68fe599ee3532817ac7edb2a99358bfb57bfa2ccb2996ab845cdc2ec4
   name: ghcr.io/madfam-org/accionables-madlab-client
   newName: ghcr.io/madfam-org/accionables-madlab-client
-- digest: sha256:435049b68a1824330a10eef997baed3806c4d0de1a09aa574a0f58d32bf942d9
+- digest: sha256:f938c393b928d1ed999577e5129438c688b05d1f462aa380cc5856986d8c0be8
   name: ghcr.io/madfam-org/accionables-madlab-server
   newName: ghcr.io/madfam-org/accionables-madlab-server

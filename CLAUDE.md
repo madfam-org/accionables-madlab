@@ -126,3 +126,10 @@ Comprehensive documentation is available in `/docs/`:
 - **[Components](./docs/components/)** - React component library
 - **[Guides](./docs/guides/)** - Developer workflow guides
 - **[Tutorials](./docs/tutorials/)** - Step-by-step learning guides
+
+## Known Issues — Audit 2026-04-23
+
+See `/Users/aldoruizluna/labspace/claudedocs/ECOSYSTEM_AUDIT_2026-04-23.md` for the full ecosystem audit.
+
+- ~~**🔴 R3: Unauthenticated admin endpoint**~~ — Fixed 2026-04-23: `GET /waitlist/stats` now runs `[verifyJWT, requireRoles('admin')]` as fastify `preHandler`.
+- **🟡 UI: Unauthorized redirect TODO** — `apps/client/src/api/client.ts:50` `// TODO: Handle unauthorized (redirect to login)`. Users hit 401 silently.

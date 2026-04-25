@@ -102,10 +102,15 @@ export default defineConfig({
   webServer: [
     {
       // API server (Fastify) — gates all CRUD routes on JWT.
+      // ALWAYS reuse if something's already on the URL. Locally that's the
+      // dev's own `npm run dev:server`; in CI it's the background server
+      // started by the e2e job (which does the schema push + seed first).
+      // If the URL doesn't respond, Playwright falls back to running this
+      // command itself.
       command: 'npm run dev:server',
       cwd: path.resolve(__dirname, '../..'),
       url: 'http://localhost:3001/api/health/live',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true,
       timeout: 120000,
       env: {
         NODE_ENV: 'development',
@@ -113,6 +118,8 @@ export default defineConfig({
     },
     {
       // Vite dev server — proxies /api to the Fastify server.
+      // CI does not start Vite separately, so `reuseExistingServer: false`
+      // keeps the original behavior of starting it fresh in CI.
       command: 'npm run dev',
       url: 'http://localhost:5173',
       reuseExistingServer: !process.env.CI,

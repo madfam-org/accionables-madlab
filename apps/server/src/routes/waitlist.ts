@@ -80,9 +80,10 @@ export async function waitlistRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Get IP country from headers (set by proxy/CDN)
+      // Get IP country from headers (set by proxy/CDN — Cloudflare in front
+      // of enclii sets cf-ipcountry; x-country is a generic fallback some
+      // CDNs use).
       const ipCountry = (request.headers['cf-ipcountry'] ||
-                request.headers['x-vercel-ip-country'] ||
                 request.headers['x-country']) as string | undefined;
 
       // Insert new signup

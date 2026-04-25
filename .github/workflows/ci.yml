@@ -262,46 +262,6 @@ jobs:
           path: apps/client/dist/
           retention-days: 7
 
-  deploy-preview:
-    name: Deploy Preview (Vercel)
-    runs-on: ubuntu-latest
-    needs: [build, e2e]
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build
-          path: dist/
-      - name: Deploy to Vercel (Preview)
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: ./
-        continue-on-error: true
-
-  deploy-production:
-    name: Deploy to Production (Vercel)
-    runs-on: ubuntu-latest
-    needs: [build, e2e]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build
-          path: dist/
-      - name: Deploy to Vercel (Production)
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
-          working-directory: ./
-        continue-on-error: true
+  # Production deployment is handled by enclii (see infra/k8s/production/ +
+  # the separate enclii-build.yml workflow for image build + sign on push to
+  # main). No CI-side deploy step needed.

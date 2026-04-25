@@ -2,7 +2,15 @@
 /**
  * Database Seed Script
  *
- * Migrates all 109 tasks from the legacy static client data into PostgreSQL.
+ * Migrates all legacy static tasks (110 rows across 5 phases, see
+ * `data/legacyTasks.ts`) into the `tasks` table, plus the 5 team members and
+ * the canonical "MADLAB Educational Platform" project.
+ *
+ * Idempotent — re-running the seed never duplicates rows. Dedup keys:
+ *   - users:           by `email`        (`{name}@madlab.mx`)
+ *   - projects:        by `name`         ("MADLAB Educational Platform")
+ *   - project_members: by (projectId, userId)
+ *   - tasks:           by `legacyId`     ("phase.section.index", e.g. "1.1.1")
  *
  * Usage:
  *   npm run seed
@@ -10,119 +18,113 @@
  *   tsx src/scripts/seed.ts
  */
 
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import { users, projects, tasks, projectMembers } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
+import { users, projects, tasks, projectMembers } from '../db/schema.js';
+import { DEFAULT_TEAM_MEMBERS } from '../data/teamMembers.js';
+import {
+  LEGACY_TASKS,
+  type LegacyDifficulty,
+  type LegacyTask,
+  type LegacyTaskStatus,
+} from '../data/legacyTasks.js';
 
-// Import legacy data from client
-// Note: We're copying the data structure here to avoid direct imports from client
-// In production, you might want to share these via a common package
+// ---------------------------------------------------------------------------
+// Helpers (pure — exercised by unit tests)
+// ---------------------------------------------------------------------------
 
-interface LegacyTask {
-  id: string;
-  name: string;
-  nameEn: string;
-  assignee: string;
-  hours: number;
-  difficulty: 1 | 2 | 3 | 4 | 5;
-  dependencies: string[];
-  phase: number;
-  section: string;
-  sectionEn: string;
-  manualStatus?: 'not-started' | 'in-progress' | 'completed' | 'blocked' | 'cancelled';
-  statusHistory?: Array<{ status: string; timestamp: string; note?: string }>;
-}
-
-interface LegacyTeamMember {
-  name: string;
-  role: string;
-  roleEn: string;
-  avatar: string;
-}
-
-// Hardcoded legacy data (copied from client for seed purposes)
-const legacyTeamMembers: LegacyTeamMember[] = [
-  { name: 'Aldo', role: 'CEO MADFAM', roleEn: 'CEO MADFAM', avatar: '👨‍💼' },
-  { name: 'Nuri', role: 'Oficial de Estrategia MADFAM', roleEn: 'Strategy Officer MADFAM', avatar: '👩‍💼' },
-  { name: 'Luis', role: 'Rep. La Ciencia del Juego', roleEn: 'La Ciencia del Juego Rep.', avatar: '👨‍🔬' },
-  { name: 'Silvia', role: 'Gurú de Marketing', roleEn: 'Marketing Guru', avatar: '👩‍🎨' },
-  { name: 'Caro', role: 'Diseñadora y Maestra', roleEn: 'Designer and Teacher', avatar: '👩‍🎓' },
-];
-
-// Import all legacy tasks
-// Note: These imports require the client package to be built first
-// Run 'npm run build -w @madlab/client' before seeding
-const loadLegacyTasks = async (): Promise<LegacyTask[]> => {
-  try {
-    // Try to dynamically import from the client package
-    // These are runtime dynamic imports that may not exist at compile time
-    // @ts-expect-error - Dynamic import from workspace package
-    const phase1Module = await import('@madlab/client/src/data/tasks/phase1.js').catch(() => ({ phase1Tasks: [] }));
-    // @ts-expect-error - Dynamic import from workspace package
-    const phase2Module = await import('@madlab/client/src/data/tasks/phase2.js').catch(() => ({ phase2Tasks: [] }));
-    // @ts-expect-error - Dynamic import from workspace package
-    const phase3Module = await import('@madlab/client/src/data/tasks/phase3.js').catch(() => ({ phase3Tasks: [] }));
-    // @ts-expect-error - Dynamic import from workspace package
-    const phase4Module = await import('@madlab/client/src/data/tasks/phase4.js').catch(() => ({ phase4Tasks: [] }));
-    // @ts-expect-error - Dynamic import from workspace package
-    const phase5Module = await import('@madlab/client/src/data/tasks/phase5.js').catch(() => ({ phase5Tasks: [] }));
-
-    const tasks = [
-      ...(phase1Module.phase1Tasks || []),
-      ...(phase2Module.phase2Tasks || []),
-      ...(phase3Module.phase3Tasks || []),
-      ...(phase4Module.phase4Tasks || []),
-      ...(phase5Module.phase5Tasks || []),
-    ];
-
-    if (tasks.length === 0) {
-      console.warn('  ⚠️  No tasks loaded from client. Using empty task list.');
-    }
-
-    return tasks;
-  } catch (error) {
-    console.warn('  ⚠️  Could not load tasks from client package:', error);
-    return [];
-  }
-};
-
-// Difficulty mapping helper
-const mapDifficulty = (difficulty: 1 | 2 | 3 | 4 | 5): 'easy' | 'medium' | 'hard' | 'expert' => {
+/**
+ * Map the legacy 1–5 difficulty number to the `task_difficulty` enum.
+ * Mirrors `apps/client/src/api/mappers.ts::mapNumberToDifficulty`. If the two
+ * ever diverge, round-trips through the API would corrupt the field, so this
+ * mapping must stay in lockstep.
+ */
+export function mapDifficulty(difficulty: LegacyDifficulty): 'easy' | 'medium' | 'hard' | 'expert' {
   if (difficulty <= 2) return 'easy';
   if (difficulty === 3) return 'medium';
   if (difficulty === 4) return 'hard';
   return 'expert';
-};
+}
 
-async function seed() {
-  console.log('🌱 Starting database seed...\n');
+/**
+ * The legacy data has no `manualStatus` set today, but a few imported edits
+ * may use the snake_case form ('not_started', 'in_progress'). Normalise to the
+ * hyphen form the `task_status` enum requires; pass through anything that
+ * already matches the enum, and fall back to 'not-started' for unknown values.
+ */
+export function normalizeLegacyStatus(
+  status: LegacyTaskStatus | string | undefined,
+): 'not-started' | 'in-progress' | 'completed' | 'blocked' | 'cancelled' {
+  if (!status) return 'not-started';
+  const enumValues = ['not-started', 'in-progress', 'completed', 'blocked', 'cancelled'] as const;
+  if ((enumValues as readonly string[]).includes(status)) {
+    return status as (typeof enumValues)[number];
+  }
+  // Tolerate the legacy snake_case TaskStatus from `apps/client/src/data/types.ts`.
+  const snakeMap: Record<string, (typeof enumValues)[number]> = {
+    not_started: 'not-started',
+    in_progress: 'in-progress',
+    planning: 'not-started',
+    review: 'in-progress',
+  };
+  return snakeMap[status] ?? 'not-started';
+}
 
-  // Create database connection
-  const connectionString = process.env.DATABASE_URL || 'postgresql://madlab:madlab@localhost:5432/madlab';
-  const pool = new pg.Pool({ connectionString });
-  const db = drizzle(pool);
+/**
+ * Result counts returned from `runSeed` — exposed for tests and CLI summary.
+ */
+export interface SeedResult {
+  usersCreated: number;
+  usersExisting: number;
+  projectCreated: boolean;
+  membersAdded: number;
+  tasksInserted: number;
+  tasksSkipped: number;
+  unknownAssignees: string[];
+}
 
-  try {
-    // ========================================================================
-    // Step 1: Upsert Team Members (Users)
-    // ========================================================================
-    console.log('👥 Step 1: Upserting team members...');
-    const userMap = new Map<string, string>(); // name -> UUID
+// ---------------------------------------------------------------------------
+// Core seed (db is injected so tests can mock it)
+// ---------------------------------------------------------------------------
 
-    for (const member of legacyTeamMembers) {
-      // Check if user exists
-      const existing = await db.select().from(users).where(eq(users.email, `${member.name.toLowerCase()}@madlab.mx`)).limit(1);
+interface SeedDeps {
+  db: NodePgDatabase;
+  /** Logger; tests pass `() => {}` to keep output clean. */
+  log?: (...args: unknown[]) => void;
+}
 
-      let userId: string;
-      if (existing.length > 0) {
-        userId = existing[0].id;
-        console.log(`  ✓ User already exists: ${member.name} (${userId})`);
-      } else {
-        // Create user
-        const [newUser] = await db.insert(users).values({
+export async function runSeed({ db, log = console.log }: SeedDeps): Promise<SeedResult> {
+  const result: SeedResult = {
+    usersCreated: 0,
+    usersExisting: 0,
+    projectCreated: false,
+    membersAdded: 0,
+    tasksInserted: 0,
+    tasksSkipped: 0,
+    unknownAssignees: [],
+  };
+
+  // -------------------------------------------------------------------------
+  // 1. Upsert team members → users
+  // -------------------------------------------------------------------------
+  log('Step 1: upserting team members...');
+  const userMap = new Map<string, string>(); // displayName → user.id
+
+  for (const member of DEFAULT_TEAM_MEMBERS) {
+    const email = `${member.name.toLowerCase()}@madlab.mx`;
+    const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
+
+    let userId: string;
+    if (existing.length > 0) {
+      userId = existing[0].id;
+      result.usersExisting++;
+    } else {
+      const [created] = await db
+        .insert(users)
+        .values({
           januaId: `mock-janua-${member.name.toLowerCase()}`,
-          email: `${member.name.toLowerCase()}@madlab.mx`,
+          email,
           name: member.name,
           displayName: member.name,
           avatarUrl: member.avatar,
@@ -131,40 +133,45 @@ async function seed() {
             roleEn: member.roleEn,
             isTeamMember: true,
           },
-        }).returning();
-
-        userId = newUser.id;
-        console.log(`  ✓ Created user: ${member.name} (${userId})`);
-      }
-
-      userMap.set(member.name, userId);
-
-      // Handle special case for "All" assignee
-      if (member.name === 'Aldo') {
-        userMap.set('All', userId); // Default "All" tasks to Aldo for now
-      }
+        })
+        .returning();
+      userId = created.id;
+      result.usersCreated++;
     }
 
-    console.log(`  ✅ Processed ${userMap.size - 1} team members\n`);
+    userMap.set(member.name, userId);
+  }
+  // Tasks assigned to "All" → owner (Aldo). Done as a soft alias rather than
+  // a real user; the multi-assignee model is out of scope for the seed.
+  const aldoId = userMap.get('Aldo');
+  if (aldoId) userMap.set('All', aldoId);
 
-    // ========================================================================
-    // Step 2: Create Main Project
-    // ========================================================================
-    console.log('📁 Step 2: Creating main project...');
+  log(`  → users: ${result.usersCreated} created, ${result.usersExisting} existing`);
 
-    // Check if project exists
-    const existingProject = await db.select().from(projects).where(eq(projects.name, 'MADLAB Educational Platform')).limit(1);
+  // -------------------------------------------------------------------------
+  // 2. Upsert main project
+  // -------------------------------------------------------------------------
+  log('Step 2: upserting project...');
+  const PROJECT_NAME = 'MADLAB Educational Platform';
+  const existingProject = await db
+    .select()
+    .from(projects)
+    .where(eq(projects.name, PROJECT_NAME))
+    .limit(1);
 
-    let projectId: string;
-    if (existingProject.length > 0) {
-      projectId = existingProject[0].id;
-      console.log(`  ✓ Project already exists: ${projectId}\n`);
-    } else {
-      const [newProject] = await db.insert(projects).values({
-        name: 'MADLAB Educational Platform',
-        nameEn: 'MADLAB Educational Platform',
-        description: 'Gamified science and technology learning program for primary schools in Mexico, focused on SDGs (clean water, clean energy, recycling)',
-        descriptionEn: 'Gamified science and technology learning program for primary schools in Mexico, focused on SDGs (clean water, clean energy, recycling)',
+  let projectId: string;
+  if (existingProject.length > 0) {
+    projectId = existingProject[0].id;
+  } else {
+    const [created] = await db
+      .insert(projects)
+      .values({
+        name: PROJECT_NAME,
+        nameEn: PROJECT_NAME,
+        description:
+          'Gamified science and technology learning program for primary schools in Mexico, focused on SDGs (clean water, clean energy, recycling)',
+        descriptionEn:
+          'Gamified science and technology learning program for primary schools in Mexico, focused on SDGs (clean water, clean energy, recycling)',
         status: 'active',
         startDate: new Date('2025-08-11'),
         targetEndDate: new Date('2025-10-31'),
@@ -175,138 +182,131 @@ async function seed() {
           teamSize: 5,
           phases: 5,
         },
-      }).returning();
-
-      projectId = newProject.id;
-      console.log(`  ✅ Created project: ${projectId}\n`);
-    }
-
-    // ========================================================================
-    // Step 3: Add Team Members to Project
-    // ========================================================================
-    console.log('👥 Step 3: Adding team members to project...');
-
-    let addedMembers = 0;
-    for (const [name, userId] of userMap.entries()) {
-      if (name === 'All') continue; // Skip the "All" alias
-
-      // Check if already member
-      const existingMembership = await db.select().from(projectMembers)
-        .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-        .limit(1);
-
-      if (existingMembership.length === 0) {
-        await db.insert(projectMembers).values({
-          projectId,
-          userId,
-          role: name === 'Aldo' ? 'owner' : 'member',
-        });
-        addedMembers++;
-      }
-    }
-
-    console.log(`  ✅ Added ${addedMembers} members to project\n`);
-
-    // ========================================================================
-    // Step 4: Load and Insert Tasks
-    // ========================================================================
-    console.log('📝 Step 4: Loading legacy tasks...');
-    const legacyTasks = await loadLegacyTasks();
-    console.log(`  ✓ Loaded ${legacyTasks.length} tasks from client data\n`);
-
-    console.log('📝 Step 5: Inserting tasks into database...');
-    let insertedCount = 0;
-    let skippedCount = 0;
-
-    for (const legacyTask of legacyTasks) {
-      // Check if task already exists
-      const existingTask = await db.select().from(tasks)
-        .where(eq(tasks.legacyId, legacyTask.id))
-        .limit(1);
-
-      if (existingTask.length > 0) {
-        skippedCount++;
-        continue;
-      }
-
-      // Map assignee name to user ID
-      const assigneeId = userMap.get(legacyTask.assignee);
-      if (!assigneeId) {
-        console.warn(`  ⚠️  Warning: Unknown assignee "${legacyTask.assignee}" for task ${legacyTask.id}`);
-      }
-
-      // Build metadata object with unmapped fields
-      const metadata: Record<string, any> = {
-        section: legacyTask.section,
-        sectionEn: legacyTask.sectionEn,
-      };
-
-      if (legacyTask.manualStatus) {
-        metadata.manualStatus = legacyTask.manualStatus;
-      }
-
-      if (legacyTask.statusHistory) {
-        metadata.statusHistory = legacyTask.statusHistory;
-      }
-
-      // Insert task
-      await db.insert(tasks).values({
-        projectId,
-        legacyId: legacyTask.id,
-        title: legacyTask.name,
-        titleEn: legacyTask.nameEn,
-        description: `${legacyTask.section} - ${legacyTask.name}`,
-        descriptionEn: `${legacyTask.sectionEn} - ${legacyTask.nameEn}`,
-        status: legacyTask.manualStatus || 'not-started',
-        assigneeId: assigneeId || null,
-        estimatedHours: legacyTask.hours,
-        difficulty: mapDifficulty(legacyTask.difficulty),
-        phase: legacyTask.phase,
-        dependencies: legacyTask.dependencies,
-        metadata,
-      });
-
-      insertedCount++;
-
-      // Progress indicator
-      if (insertedCount % 10 === 0) {
-        console.log(`  ✓ Inserted ${insertedCount}/${legacyTasks.length} tasks...`);
-      }
-    }
-
-    console.log(`  ✅ Inserted ${insertedCount} tasks (skipped ${skippedCount} duplicates)\n`);
-
-    // ========================================================================
-    // Summary
-    // ========================================================================
-    console.log('🎉 Seed completed successfully!\n');
-    console.log('Summary:');
-    console.log(`  - Team Members: ${userMap.size - 1}`);
-    console.log('  - Projects: 1');
-    console.log(`  - Tasks: ${insertedCount}`);
-    console.log(`  - Total Duration: ${legacyTasks.reduce((sum, t) => sum + t.hours, 0)} hours\n`);
-
-    // Verify task count
-    const finalTaskCount = await db.select().from(tasks);
-    console.log(`✅ Database verification: ${finalTaskCount.length} tasks in database\n`);
-
-  } catch (error) {
-    console.error('❌ Seed failed:', error);
-    throw error;
-  } finally {
-    // Close connection
-    await pool.end();
-    console.log('🔌 Database connection closed');
+      })
+      .returning();
+    projectId = created.id;
+    result.projectCreated = true;
   }
+
+  // -------------------------------------------------------------------------
+  // 3. Add team members to project
+  // -------------------------------------------------------------------------
+  log('Step 3: adding members to project...');
+  for (const member of DEFAULT_TEAM_MEMBERS) {
+    const userId = userMap.get(member.name);
+    if (!userId) continue;
+
+    const existingMembership = await db
+      .select()
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+      .limit(1);
+
+    if (existingMembership.length === 0) {
+      await db.insert(projectMembers).values({
+        projectId,
+        userId,
+        role: member.name === 'Aldo' ? 'owner' : 'member',
+      });
+      result.membersAdded++;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 4. Insert legacy tasks (idempotent on legacyId)
+  // -------------------------------------------------------------------------
+  log(`Step 4: inserting ${LEGACY_TASKS.length} legacy tasks...`);
+  const seenAssignees = new Set<string>();
+
+  for (const legacyTask of LEGACY_TASKS) {
+    // Idempotency: skip if a row with this legacyId already exists.
+    const existing = await db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.legacyId, legacyTask.id))
+      .limit(1);
+
+    if (existing.length > 0) {
+      result.tasksSkipped++;
+      continue;
+    }
+
+    const assigneeId = userMap.get(legacyTask.assignee);
+    if (!assigneeId && !seenAssignees.has(legacyTask.assignee)) {
+      seenAssignees.add(legacyTask.assignee);
+      result.unknownAssignees.push(legacyTask.assignee);
+      log(
+        `  ⚠️  unknown assignee "${legacyTask.assignee}" on task ${legacyTask.id} — leaving NULL`,
+      );
+    }
+
+    const metadata: Record<string, unknown> = {
+      section: legacyTask.section,
+      sectionEn: legacyTask.sectionEn,
+    };
+    if (legacyTask.manualStatus) metadata.manualStatus = legacyTask.manualStatus;
+    if (legacyTask.statusHistory) metadata.statusHistory = legacyTask.statusHistory;
+
+    await db.insert(tasks).values({
+      projectId,
+      legacyId: legacyTask.id,
+      title: legacyTask.name,
+      titleEn: legacyTask.nameEn,
+      description: `${legacyTask.section} - ${legacyTask.name}`,
+      descriptionEn: `${legacyTask.sectionEn} - ${legacyTask.nameEn}`,
+      status: normalizeLegacyStatus(legacyTask.manualStatus),
+      assigneeId: assigneeId ?? null,
+      estimatedHours: Math.round(legacyTask.hours),
+      difficulty: mapDifficulty(legacyTask.difficulty),
+      phase: legacyTask.phase,
+      section: legacyTask.section,
+      sectionEn: legacyTask.sectionEn,
+      dependencies: legacyTask.dependencies,
+      metadata,
+    });
+
+    result.tasksInserted++;
+  }
+
+  log(`  → tasks: ${result.tasksInserted} inserted, ${result.tasksSkipped} skipped`);
+  return result;
 }
 
-// Run seed
-seed()
-  .then(() => {
-    console.log('✅ Seed script finished successfully');
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error('❌ Seed script failed:', error);
-    process.exit(1);
-  });
+// Re-exported for tests that need the raw shape (e.g. legacyTasks shape test).
+export { LEGACY_TASKS };
+export type { LegacyTask };
+
+// ---------------------------------------------------------------------------
+// CLI entry point — only runs when invoked as a script, not when imported.
+// ---------------------------------------------------------------------------
+
+const isMain = import.meta.url === `file://${process.argv[1]}`;
+
+if (isMain) {
+  const connectionString =
+    process.env.DATABASE_URL || 'postgresql://madlab:madlab@localhost:5432/madlab';
+  const pool = new pg.Pool({ connectionString });
+  const db = drizzle(pool);
+
+  console.log('🌱 Starting database seed...\n');
+  runSeed({ db })
+    .then(async (result) => {
+      console.log('\n🎉 Seed completed:');
+      console.log(`  - Users:     ${result.usersCreated} created, ${result.usersExisting} existing`);
+      console.log(`  - Project:   ${result.projectCreated ? 'created' : 'existing'}`);
+      console.log(`  - Members:   ${result.membersAdded} added`);
+      console.log(
+        `  - Tasks:     ${result.tasksInserted} inserted, ${result.tasksSkipped} skipped`,
+      );
+      if (result.unknownAssignees.length > 0) {
+        console.log(`  - ⚠️  Unknown assignees: ${result.unknownAssignees.join(', ')}`);
+      }
+      await pool.end();
+      process.exit(0);
+    })
+    .catch(async (error) => {
+      console.error('❌ Seed failed:', error);
+      await pool.end();
+      process.exit(1);
+    });
+}

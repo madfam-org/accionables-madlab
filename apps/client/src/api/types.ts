@@ -1,154 +1,56 @@
 /**
- * API Response Types
- * These match the backend Drizzle schema exactly
+ * API Response & Payload Types
+ *
+ * These now come from @madlab/shared — single source of truth that the
+ * server validates with at runtime. Hand-maintained types previously
+ * drifted from the server (e.g. BulkUpdateTasksPayload had the wrong
+ * shape; createProjectSchema had phantom eventDate/eventType fields).
  */
+import type {
+  CreateTaskInput,
+  UpdateTaskInput,
+  TaskQueryInput,
+  BulkUpdateTasksInput,
+  CreateProjectInput,
+  UpdateProjectInput,
+} from '@madlab/shared';
 
-// API Enums (matching backend)
-export type ApiTaskStatus = 'not-started' | 'in-progress' | 'completed' | 'blocked' | 'cancelled';
-export type ApiTaskDifficulty = 'easy' | 'medium' | 'hard' | 'expert';
-export type ApiProjectStatus = 'planning' | 'active' | 'on-hold' | 'completed' | 'archived';
+export type {
+  ApiUser,
+  ApiProject,
+  ApiTask,
+  ApiTaskMetadata,
+  ApiProjectStats,
+  ApiResponse,
+  ApiErrorResponse,
+  ApiTasksResponse,
+  ApiProjectsResponse,
+  TaskStatus as ApiTaskStatus,
+  TaskDifficulty as ApiTaskDifficulty,
+  ProjectStatus as ApiProjectStatus,
+} from '@madlab/shared';
 
-// API User (from backend users table)
-export interface ApiUser {
-  id: string;
-  januaId: string;
-  email: string;
-  name: string;
-  displayName?: string;
-  avatarUrl?: string;
-  role?: string;
-  isActive: boolean;
-  metadata?: Record<string, any>;
-  createdAt: string;
-  updatedAt: string;
-  lastSeenAt?: string;
-}
+// Mutation payloads — accept the *input* type (pre-defaults), since callers
+// frequently omit fields with server defaults.
+export type CreateTaskPayload = Partial<CreateTaskInput> &
+  Pick<CreateTaskInput, 'projectId' | 'title'>;
 
-// API Project (from backend projects table)
-export interface ApiProject {
-  id: string;
-  name: string;
-  nameEn?: string;
-  description?: string;
-  descriptionEn?: string;
-  status: ApiProjectStatus;
-  startDate?: string;
-  targetEndDate?: string;
-  endDate?: string;
-  createdBy?: string;
-  metadata?: Record<string, any>;
-  createdAt: string;
-  updatedAt: string;
-}
+export type UpdateTaskPayload = UpdateTaskInput;
 
-// API Task (from backend tasks table)
-export interface ApiTask {
-  id: string;
+export type BulkUpdateTasksPayload = BulkUpdateTasksInput;
+
+// Query params — the schema's input type uses strings (HTTP query strings),
+// but client callers naturally pass strongly-typed values, so we relax to
+// the parsed shape minus the limit/offset defaults.
+export type TaskFilters = Partial<{
   projectId: string;
-  legacyId?: string;
-  title: string;
-  titleEn?: string;
-  description?: string;
-  descriptionEn?: string;
-  status: ApiTaskStatus;
-  assigneeId?: string;
-  estimatedHours?: number;
-  difficulty?: ApiTaskDifficulty;
-  phase?: number;
-  section?: string;
-  sectionEn?: string;
-  progress: number;
-  actualHours?: number;
-  startDate?: string;
-  endDate?: string;
-  completedAt?: string;
-  dependencies: string[];
-  metadata?: {
-    tags?: string[];
-    priority?: 'low' | 'medium' | 'high' | 'critical';
-    manualStatus?: string;
-    notes?: string;
-    section?: string;
-    sectionEn?: string;
-    statusHistory?: Array<{ status: string; timestamp: string; note?: string }>;
-    [key: string]: any;
-  };
-  createdAt: string;
-  updatedAt: string;
-  // Populated fields from joins
-  assignee?: ApiUser;
-  project?: ApiProject;
-}
+  assigneeId: string;
+  status: TaskQueryInput['status'];
+  phase: number;
+  difficulty: TaskQueryInput['difficulty'];
+  limit: number;
+  offset: number;
+}>;
 
-// API Response Wrappers
-export interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  count?: number;
-  error?: string;
-}
-
-export interface ApiTasksResponse {
-  success: boolean;
-  data: ApiTask[];
-  count: number;
-}
-
-export interface ApiProjectsResponse {
-  success: boolean;
-  data: (ApiProject & {
-    stats?: {
-      totalTasks: number;
-      memberCount: number;
-      tasksByStatus: Record<ApiTaskStatus, number>;
-    };
-  })[];
-}
-
-// Query Parameters
-export interface TaskFilters {
-  projectId?: string;
-  assigneeId?: string;
-  status?: ApiTaskStatus;
-  phase?: number;
-  difficulty?: ApiTaskDifficulty;
-}
-
-// Mutation Payloads
-export interface CreateTaskPayload {
-  projectId: string;
-  title: string;
-  titleEn?: string;
-  description?: string;
-  descriptionEn?: string;
-  status?: ApiTaskStatus;
-  assigneeId?: string;
-  estimatedHours?: number;
-  difficulty?: ApiTaskDifficulty;
-  phase?: number;
-  dependencies?: string[];
-  metadata?: Record<string, any>;
-}
-
-export interface UpdateTaskPayload {
-  title?: string;
-  titleEn?: string;
-  description?: string;
-  descriptionEn?: string;
-  status?: ApiTaskStatus;
-  assigneeId?: string;
-  estimatedHours?: number;
-  difficulty?: ApiTaskDifficulty;
-  phase?: number;
-  progress?: number;
-  actualHours?: number;
-  startDate?: string;
-  endDate?: string;
-  dependencies?: string[];
-  metadata?: Record<string, any>;
-}
-
-export interface BulkUpdateTasksPayload {
-  taskIds: string[];
-  updates: UpdateTaskPayload;
-}
+export type CreateProjectPayload = Partial<CreateProjectInput> & Pick<CreateProjectInput, 'name'>;
+export type UpdateProjectPayload = UpdateProjectInput;

@@ -125,9 +125,20 @@ export function useBulkUpdateTasks() {
   return useMutation({
     mutationFn: async ({ taskIds, updates }: { taskIds: string[]; updates: Partial<Task> }) => {
       const apiUpdates = mapFrontendTaskToApiUpdate(updates);
+      // Server expects { updates: [{id, ...fields}, ...] }, not the old
+      // { taskIds, updates } shape. The bulk schema only accepts a subset
+      // (status/progress/phase/startDate/endDate) and rejects null; strip
+      // down before sending so the request validates.
+      const u = apiUpdates as Record<string, unknown>;
+      const bulkPatch: Record<string, unknown> = {};
+      for (const key of ['status', 'progress', 'phase'] as const) {
+        if (u[key] !== undefined && u[key] !== null) bulkPatch[key] = u[key];
+      }
+      for (const key of ['startDate', 'endDate'] as const) {
+        if (typeof u[key] === 'string') bulkPatch[key] = u[key];
+      }
       return tasksApi.bulkUpdate({
-        taskIds,
-        updates: apiUpdates as UpdateTaskPayload,
+        updates: taskIds.map((id) => ({ id, ...bulkPatch })),
       });
     },
 

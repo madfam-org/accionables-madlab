@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
+    "@madlab/shared": "*",
     "@tanstack/react-query": "^5.59.20",
     "axios": "^1.7.7",
     "clsx": "^2.1.1",

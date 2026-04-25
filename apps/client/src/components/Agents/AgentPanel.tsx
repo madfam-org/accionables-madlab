@@ -55,11 +55,13 @@ export function AgentPanel({ position = 'sidebar' }: AgentPanelProps) {
       } ${containerClasses[position]}`}
     >
       {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 cursor-pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          aria-expanded={isExpanded}
+          className="flex flex-1 items-center gap-2 cursor-pointer bg-transparent border-0 p-0 text-left appearance-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+        >
           <div className="relative">
             <Bot className="w-5 h-5 text-indigo-500" />
             {filteredSuggestions.length > 0 && (
@@ -71,18 +73,28 @@ export function AgentPanel({ position = 'sidebar' }: AgentPanelProps) {
           <span className="font-medium text-gray-900 dark:text-white">
             {language === 'es' ? 'Asistentes IA' : 'AI Assistants'}
           </span>
-        </div>
+        </button>
         <div className="flex items-center gap-2">
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowSettings(!showSettings);
-            }}
+            type="button"
+            onClick={() => setShowSettings(!showSettings)}
             className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            aria-label={language === 'es' ? 'Configuración de agentes' : 'Agent settings'}
           >
             <Settings size={16} />
           </button>
-          {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          <button
+            type="button"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            aria-label={
+              isExpanded
+                ? language === 'es' ? 'Colapsar panel' : 'Collapse panel'
+                : language === 'es' ? 'Expandir panel' : 'Expand panel'
+            }
+          >
+            {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
         </div>
       </div>
 

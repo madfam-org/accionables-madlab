@@ -83,12 +83,12 @@ export function mapApiTaskToFrontend(apiTask: ApiTask): Task {
     id: apiTask.legacyId || apiTask.id, // Prefer legacyId for backwards compatibility
     name: apiTask.title,
     nameEn: apiTask.titleEn || apiTask.title,
-    assignee: apiTask.assignee?.name || 'Unassigned',
+    assignee: apiTask.assignee || apiTask.assigneeDetails?.name || 'Unassigned',
     hours: apiTask.estimatedHours || 0,
     section: apiTask.metadata?.section || apiTask.section || '',
     sectionEn: apiTask.metadata?.sectionEn || apiTask.sectionEn || '',
     phase: apiTask.phase || 1,
-    difficulty: mapDifficultyToNumber(apiTask.difficulty),
+    difficulty: mapDifficultyToNumber(apiTask.difficulty ?? undefined),
     dependencies: apiTask.dependencies || [],
     manualStatus: apiTask.metadata?.manualStatus as TaskStatus | undefined || mapApiStatusToFrontend(apiTask.status),
     statusHistory: apiTask.metadata?.statusHistory?.map(entry => ({

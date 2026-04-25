@@ -2,8 +2,39 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../config/database.js';
 import { waitlist } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import { verifyJWT, requireRoles } from '../middleware/auth.js';
+
+// In-memory TTL cache for /waitlist/count. The endpoint is intentionally
+// public ("social proof"), so it's a trivial DoS / DB-hammer surface without
+// caching. 60s freshness is fine for a "1,200+ on the list" widget.
+const WAITLIST_COUNT_TTL_MS = 60_000;
+let waitlistCountCache: { value: number; fetchedAt: number } | null = null;
+
+async function getWaitlistCount(): Promise<number> {
+  const now = Date.now();
+  if (waitlistCountCache && now - waitlistCountCache.fetchedAt < WAITLIST_COUNT_TTL_MS) {
+    return waitlistCountCache.value;
+  }
+  const [{ value }] = await db.select({ value: count() }).from(waitlist);
+  waitlistCountCache = { value, fetchedAt: now };
+  return value;
+}
+
+// Test-only seam: clear the cache between assertions.
+export function __resetWaitlistCountCacheForTests(): void {
+  waitlistCountCache = null;
+}
+
+function bucketForDisplay(n: number): { displayCount: number; display: string } {
+  if (n < 10) return { displayCount: n, display: `${n}` };
+  if (n < 100) {
+    const v = Math.floor(n / 10) * 10;
+    return { displayCount: v, display: `${v}+` };
+  }
+  const v = Math.floor(n / 100) * 100;
+  return { displayCount: v, display: `${v}+` };
+}
 
 // Validation schema
 const waitlistSignupSchema = z.object({
@@ -93,28 +124,16 @@ export async function waitlistRoutes(fastify: FastifyInstance) {
 
   /**
      * GET /api/waitlist/count
-     * Get total waitlist signups (public for social proof)
+     * Get total waitlist signups (public — used as "social proof" on the
+     * landing page). Cached server-side for WAITLIST_COUNT_TTL_MS to avoid
+     * hammering the DB on every page view, and uses an aggregate COUNT(*)
+     * instead of fetching every row.
      */
   fastify.get('/waitlist/count', async (_request, reply) => {
     try {
-      const result = await db
-        .select({ id: waitlist.id })
-        .from(waitlist);
-
-      const count = result.length;
-
-      // Round down for social proof (shows momentum without exact numbers)
-      const displayCount = count < 10 ? count :
-        count < 100 ? Math.floor(count / 10) * 10 :
-          Math.floor(count / 100) * 100;
-
-      return reply.send({
-        success: true,
-        count: displayCount,
-        display: count < 10 ? `${count}` :
-          count < 100 ? `${displayCount}+` :
-            `${displayCount}+`,
-      });
+      const total = await getWaitlistCount();
+      const { displayCount, display } = bucketForDisplay(total);
+      return reply.send({ success: true, count: displayCount, display });
     } catch (error) {
       fastify.log.error(error);
       return reply.code(500).send({

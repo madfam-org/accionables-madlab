@@ -27,10 +27,10 @@ export default tseslint.config(
       ],
       ...jsxA11y.configs.recommended.rules,
 
-      // Downgraded to warnings pending a focused a11y pass — see task list.
-      // Lint-gate stays green; debt remains visible.
-      'jsx-a11y/click-events-have-key-events': 'warn',
-      'jsx-a11y/no-static-element-interactions': 'warn',
+      // Strict accessibility: non-interactive elements must not carry click
+      // handlers without keyboard equivalents. Prefer <button> over <div onClick>.
+      'jsx-a11y/click-events-have-key-events': 'error',
+      'jsx-a11y/no-static-element-interactions': 'error',
 
       // TypeScript specific
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],

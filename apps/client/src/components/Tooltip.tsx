@@ -162,6 +162,13 @@ export const Tooltip: React.FC<TooltipProps> = ({
 
   return (
     <>
+      {/*
+        eslint-disable-next-line jsx-a11y/no-static-element-interactions --
+        Wrapper is a transparent tooltip trigger around `children`; keyboard
+        accessibility is provided via onFocus/onBlur which propagate from the
+        actual interactive child element. Adding an interactive role here
+        would incorrectly steal semantics from the wrapped content.
+      */}
       <div
         ref={triggerRef}
         onMouseEnter={showTooltip}

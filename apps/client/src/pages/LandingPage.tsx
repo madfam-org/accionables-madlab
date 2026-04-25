@@ -503,63 +503,66 @@ interface DemoProjectCardProps {
 
 function DemoProjectCard({ project, theme, onTry }: DemoProjectCardProps) {
   return (
-    <div
-      className={`group relative overflow-hidden rounded-2xl transition-all duration-300 hover:scale-[1.02] cursor-pointer ${
+    <button
+      type="button"
+      onClick={onTry}
+      aria-label={`Try ${project.nameEn}`}
+      className={`group relative overflow-hidden rounded-2xl transition-all duration-300 hover:scale-[1.02] cursor-pointer text-left w-full appearance-none border-0 p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
         theme === 'dark'
           ? 'bg-slate-800/70 hover:bg-slate-800'
           : 'bg-white hover:shadow-xl'
       }`}
-      onClick={onTry}
     >
       {/* Gradient Header */}
-      <div className={`h-24 bg-gradient-to-r ${project.gradient} relative`}>
-        <div className="absolute inset-0 flex items-center justify-center">
+      <span className={`block h-24 bg-gradient-to-r ${project.gradient} relative`}>
+        <span className="absolute inset-0 flex items-center justify-center">
           <span className="text-5xl opacity-90 group-hover:scale-110 transition-transform duration-300">
             {project.icon}
           </span>
-        </div>
+        </span>
         {/* Days Badge */}
-        <div className="absolute top-3 right-3 px-2 py-1 bg-black/30 backdrop-blur-sm rounded-full text-white text-xs font-medium">
+        <span className="absolute top-3 right-3 px-2 py-1 bg-black/30 backdrop-blur-sm rounded-full text-white text-xs font-medium">
           {project.daysUntilEvent} days
-        </div>
-      </div>
+        </span>
+      </span>
 
       {/* Content */}
-      <div className="p-5">
-        <h3 className={`text-lg font-semibold mb-1 ${
+      <span className="block p-5">
+        <span className={`block text-lg font-semibold mb-1 ${
           theme === 'dark' ? 'text-slate-100' : 'text-slate-800'
         }`}>
           {project.nameEn}
-        </h3>
-        <p className={`text-sm mb-4 line-clamp-2 ${
+        </span>
+        <span className={`block text-sm mb-4 line-clamp-2 ${
           theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
         }`}>
           {project.descriptionEn}
-        </p>
+        </span>
 
         {/* Meta */}
-        <div className="flex items-center justify-between">
-          <div className={`flex items-center gap-4 text-xs ${
+        <span className="flex items-center justify-between">
+          <span className={`flex items-center gap-4 text-xs ${
             theme === 'dark' ? 'text-slate-500' : 'text-slate-500'
           }`}>
             <span className="flex items-center gap-1">
               <Calendar size={12} />
               {project.taskCount} tasks
             </span>
-          </div>
+          </span>
 
-          {/* Try Button */}
-          <button
+          {/* Try Button (visual only — outer card is the actual button) */}
+          <span
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all bg-gradient-to-r ${project.gradient} text-white opacity-90 group-hover:opacity-100`}
+            aria-hidden="true"
           >
             <Play size={14} />
             Try it
-          </button>
-        </div>
-      </div>
+          </span>
+        </span>
+      </span>
 
       {/* Hover Overlay */}
-      <div className={`absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none`} />
-    </div>
+      <span className={`absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none`} />
+    </button>
   );
 }

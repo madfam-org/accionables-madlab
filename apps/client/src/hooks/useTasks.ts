@@ -125,9 +125,13 @@ export function useBulkUpdateTasks() {
   return useMutation({
     mutationFn: async ({ taskIds, updates }: { taskIds: string[]; updates: Partial<Task> }) => {
       const apiUpdates = mapFrontendTaskToApiUpdate(updates);
+      // Server expects { updates: [{id, ...fields}, ...] }, not the old
+      // { taskIds, updates } shape. Fan out the same patch across every id.
       return tasksApi.bulkUpdate({
-        taskIds,
-        updates: apiUpdates as UpdateTaskPayload,
+        updates: taskIds.map((id) => ({
+          id,
+          ...(apiUpdates as Partial<UpdateTaskPayload>),
+        })),
       });
     },
 

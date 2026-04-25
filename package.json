@@ -4,7 +4,8 @@
   "private": true,
   "description": "MADLAB - Educational Project Management Platform (Monorepo)",
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "dev": "npm run dev --workspace=apps/client",

@@ -59,8 +59,10 @@ export function EventSetterModal({ isOpen, onClose }: EventSetterModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      <button
+        type="button"
+        aria-label={language === 'es' ? 'Cerrar modal' : 'Close modal'}
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm cursor-default appearance-none border-0 p-0"
         onClick={onClose}
       />
 

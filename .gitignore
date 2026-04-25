@@ -51,3 +51,9 @@ sw.js.map
 # Build files
 *.built.*
 *.backup.*
+
+# Playwright
+playwright-report/
+test-results/
+playwright/.cache/
+apps/client/e2e/.auth/

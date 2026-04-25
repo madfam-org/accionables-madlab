@@ -15,12 +15,12 @@
  *     <AuthProvider /> mounts) we fall back to a hard `window.location`
  *     reload so the user at least lands in a clean unauthenticated state.
  *
- *   ⚠️ Storage-key gap: AuthContext currently persists tokens under
- *     `madlab_auth` (a JSON blob), not under `auth_token`/`auth_user`. Until
- *     AuthContext is updated to also write `auth_token` (or this client is
- *     refactored to read from `madlab_auth`), the bearer header will be
- *     empty for users whose only auth state lives in `madlab_auth`. The
- *     401 handler below clears all three keys defensively.
+ *   Storage-key alignment (resolved 2026-04-24): AuthContext now persists
+ *     auth state under `auth_token` (raw JWT) and `auth_user` (JanuaUser
+ *     JSON), matching what the request interceptor reads. Refresh-token /
+ *     expiry metadata is kept by AuthContext under `auth_token_meta`. The
+ *     legacy single-blob `madlab_auth` key is migrated on mount and is
+ *     still cleared by the 401 handler below as defense-in-depth.
  */
 
 import axios, { type AxiosInstance, type AxiosError } from 'axios';

@@ -64,7 +64,21 @@ interface AuthProviderProps {
 // Constants
 // ============================================================================
 
-const STORAGE_KEY = 'madlab_auth';
+// Storage keys are unified with apps/client/src/api/client.ts so the axios
+// request interceptor can read the bearer token directly:
+//   - AUTH_TOKEN_KEY:  raw JWT access token (string), read by api/client.ts
+//   - AUTH_USER_KEY:   JSON-stringified JanuaUser
+//   - AUTH_META_KEY:   JSON-stringified { refreshToken?, expiresAt } so we
+//                      can preserve refresh + expiry without polluting the
+//                      two keys the API layer cares about.
+//
+// LEGACY_STORAGE_KEY is the pre-2026-04-24 single-blob format
+// `{ user, tokens }`. It is migrated to the split layout on mount and then
+// removed. signOut also clears it as defense-in-depth.
+const AUTH_TOKEN_KEY = 'auth_token';
+const AUTH_USER_KEY = 'auth_user';
+const AUTH_META_KEY = 'auth_token_meta';
+const LEGACY_STORAGE_KEY = 'madlab_auth';
 const JANUA_URL = import.meta.env.VITE_JANUA_URL || 'https://auth.enclii.com';
 
 // ============================================================================
@@ -97,32 +111,122 @@ function isTokenExpired(expiresAt: number): boolean {
     return Date.now() >= (expiresAt - 30) * 1000;
 }
 
+/**
+ * One-time migration from the legacy single-blob `madlab_auth` key to the
+ * split `auth_token` / `auth_user` / `auth_token_meta` layout. Idempotent:
+ * re-running on already-migrated state is a no-op (returns whatever the
+ * split keys currently hold). Called from loadStoredAuth() on mount.
+ *
+ * Corrupted legacy JSON, missing fields, or any thrown error all result in
+ * the legacy key being removed and null returned, so a bad blob can never
+ * keep us stuck.
+ */
+function migrateLegacyAuth(): void {
+    let legacy: string | null;
+    try {
+        legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    } catch {
+        return;
+    }
+    if (!legacy) return;
+
+    try {
+        const data = JSON.parse(legacy);
+        const user = data?.user as JanuaUser | undefined;
+        const tokens = data?.tokens as AuthTokens | undefined;
+
+        if (user && tokens?.accessToken) {
+            localStorage.setItem(AUTH_TOKEN_KEY, tokens.accessToken);
+            localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+            localStorage.setItem(
+                AUTH_META_KEY,
+                JSON.stringify({
+                    refreshToken: tokens.refreshToken,
+                    expiresAt: tokens.expiresAt,
+                })
+            );
+        }
+    } catch {
+        // Corrupted legacy blob — fall through and remove it below.
+    } finally {
+        try {
+            localStorage.removeItem(LEGACY_STORAGE_KEY);
+        } catch {
+            // ignore
+        }
+    }
+}
+
 function loadStoredAuth(): { user: JanuaUser; tokens: AuthTokens } | null {
     try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (!stored) return null;
+        // Migrate first so a returning user with only the legacy blob still
+        // ends up authenticated on this mount.
+        migrateLegacyAuth();
 
-        const data = JSON.parse(stored);
+        const token = localStorage.getItem(AUTH_TOKEN_KEY);
+        const userRaw = localStorage.getItem(AUTH_USER_KEY);
+        if (!token || !userRaw) return null;
 
-        // Verify token isn't expired
-        if (data.tokens && isTokenExpired(data.tokens.expiresAt)) {
-            localStorage.removeItem(STORAGE_KEY);
+        const user = JSON.parse(userRaw) as JanuaUser;
+
+        // Meta is optional — token may have been written without expiry info
+        // (e.g. by an older code path). Default to a stub that never claims
+        // the token is fresh-but-unverifiable; we only act on expiresAt when
+        // present.
+        let refreshToken: string | undefined;
+        let expiresAt = 0;
+        const metaRaw = localStorage.getItem(AUTH_META_KEY);
+        if (metaRaw) {
+            try {
+                const meta = JSON.parse(metaRaw) as {
+                    refreshToken?: string;
+                    expiresAt?: number;
+                };
+                refreshToken = meta.refreshToken;
+                expiresAt = typeof meta.expiresAt === 'number' ? meta.expiresAt : 0;
+            } catch {
+                // Bad meta — treat as missing, don't bail on the whole session.
+            }
+        }
+
+        // Verify token isn't expired (only when we have a real expiry value)
+        if (expiresAt > 0 && isTokenExpired(expiresAt)) {
+            clearAuth();
             return null;
         }
 
-        return data;
+        return {
+            user,
+            tokens: {
+                accessToken: token,
+                refreshToken,
+                expiresAt,
+            },
+        };
     } catch {
-        localStorage.removeItem(STORAGE_KEY);
+        clearAuth();
         return null;
     }
 }
 
 function saveAuth(user: JanuaUser, tokens: AuthTokens): void {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ user, tokens }));
+    localStorage.setItem(AUTH_TOKEN_KEY, tokens.accessToken);
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+    localStorage.setItem(
+        AUTH_META_KEY,
+        JSON.stringify({
+            refreshToken: tokens.refreshToken,
+            expiresAt: tokens.expiresAt,
+        })
+    );
 }
 
 function clearAuth(): void {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_USER_KEY);
+    localStorage.removeItem(AUTH_META_KEY);
+    // Defense-in-depth: ensure no stale legacy blob remains after signOut.
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
 }
 
 // ============================================================================

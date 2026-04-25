@@ -121,10 +121,37 @@ jobs:
         continue-on-error: true
 
   # ─── E2E + Build ──────────────────────────────────────────────────────────
+  # E2E runs against a real Postgres + Fastify server stack. Wave 0–2 gated
+  # every CRUD route on verifyJWT, and the Playwright suite under
+  # apps/client/e2e/ uses storageState seeded with the dev-mock token. Without
+  # a real DB + API, the dev-mock token has nothing to authenticate against.
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    services:
+      # Single DB process — no inter-container DNS, no docker-compose drift,
+      # no per-run image build cost. GHA manages the healthcheck for us.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: madlab
+          POSTGRES_PASSWORD: madlab
+          POSTGRES_DB: madlab
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U madlab"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://madlab:madlab@localhost:5432/madlab
+      # NODE_ENV=development is required for two reasons:
+      #   1. assertJanuaConfiguredIfProduction is a no-op (no JANUA_* vars
+      #      needed in CI — the dev-mock token bypasses real auth).
+      #   2. verifyJWT honors the `dev-token-mock-user` storage-state seed.
+      NODE_ENV: development
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -136,10 +163,40 @@ jobs:
         run: npm ci
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
+      - name: Apply database schema
+        run: npm run db:push --workspace=apps/server
+      - name: Seed database
+        run: npm run seed --workspace=apps/server
+        continue-on-error: true # legacy task imports may fail-soft; phases/users/projects always succeed
+      - name: Start API server in background
+        run: |
+          npm run dev --workspace=apps/server > /tmp/server.log 2>&1 &
+          echo "$!" > /tmp/server.pid
+      - name: Wait for /api/health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3001/api/health > /dev/null 2>&1; then
+              echo "API is up after $i attempts"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API never came up. Server log:"
+          cat /tmp/server.log
+          exit 1
       - name: Run E2E tests
-        run: npm run test:e2e
+        run: npm run test:e2e --workspace=apps/client
         env:
           CI: true
+      - name: Stop API server
+        if: always()
+        run: |
+          if [ -f /tmp/server.pid ]; then
+            kill "$(cat /tmp/server.pid)" 2>/dev/null || true
+          fi
+      - name: Dump server log on failure
+        if: failure()
+        run: cat /tmp/server.log || true
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: always()
@@ -147,6 +204,13 @@ jobs:
           name: playwright-report
           path: apps/client/playwright-report/
           retention-days: 30
+      - name: Upload server log
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: server-log
+          path: /tmp/server.log
+          retention-days: 7
 
   build:
     name: Build Application

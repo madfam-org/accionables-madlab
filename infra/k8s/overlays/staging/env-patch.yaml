@@ -1,0 +1,22 @@
+# Staging-specific env vars layered onto the server deployment.
+# Strategic merge: keys here override the production values without
+# touching unrelated env entries.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: madlab-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: server
+          env:
+            - name: NODE_ENV
+              # Staging is "production" semantically (real Janua, real
+              # JWT verification, no dev-mock token), but we tag traffic
+              # via SENTRY_ENVIRONMENT below so dashboards aren't polluted.
+              value: production
+            - name: SENTRY_ENVIRONMENT
+              value: staging
+            - name: ALLOWED_ORIGINS
+              value: https://staging.madlab.quest

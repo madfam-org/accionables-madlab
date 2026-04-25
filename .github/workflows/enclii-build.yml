@@ -1,10 +1,15 @@
-name: Enclii build & publish
+name: Enclii build & deploy to staging
 
-# GitOps flow: push → build image(s) → cosign sign → push to GHCR → commit digest to
-# infra/k8s/production/kustomization.yaml → ArgoCD auto-syncs the new digest to the cluster.
+# GitOps flow per RFC 0001 (3-tier dev-staging-prod pipeline):
+#   push to main → build image(s) → cosign sign → push to GHCR → commit
+#   digest to infra/k8s/overlays/staging/kustomization.yaml → ArgoCD
+#   reconciles madlab-staging.
+#
+# Production promotion is a SEPARATE workflow (promote-to-prod.yml) that
+# copies the current staging digest into infra/k8s/production/. This
+# matches the canonical pattern used by karafiel / forgesight / autoswarm.
 #
 # Image naming: ghcr.io/madfam-org/accionables-madlab-<svc>:<sha>  (+ digest pin for kustomize)
-# Follows the MADFAM internal-devops pattern used by routecraft / karafiel / autoswarm.
 
 on:
   push:
@@ -12,6 +17,7 @@ on:
     paths:
       - 'apps/**'
       - 'infra/k8s/production/**'
+      - 'infra/k8s/overlays/**'
       - '.github/workflows/enclii-build.yml'
   workflow_dispatch:
     inputs:
@@ -145,8 +151,8 @@ jobs:
           name: digest-${{ matrix.service.name }}
           path: digests/
 
-  update-manifest:
-    name: Commit digest to kustomization.yaml
+  update-staging-manifest:
+    name: Commit digests to staging overlay
     needs: build
     if: needs.build.result == 'success'
     runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
@@ -167,27 +173,27 @@ jobs:
           pattern: digest-*
           merge-multiple: true
 
-      - name: Update kustomize image digests
+      - name: Update staging kustomize image digests
         run: |
-          cd infra/k8s/production
-          for f in ../../../digests/*.txt; do
+          cd infra/k8s/overlays/staging
+          for f in ../../../../digests/*.txt; do
             line=$(cat "$f")
             name="${line%%=*}"
             digest="${line#*=}"
-            echo "Pinning $name to $digest"
+            echo "Pinning $name to $digest in staging overlay"
             kustomize edit set image "ghcr.io/madfam-org/accionables-madlab-${name}=ghcr.io/madfam-org/accionables-madlab-${name}@${digest}"
           done
 
-      - name: Commit & push digest update
+      - name: Commit & push staging digest update
         run: |
           git config user.name "madlab-ci[bot]"
           git config user.email "ci@madlab.quest"
-          if git diff --quiet infra/k8s/production/kustomization.yaml; then
-            echo "No digest changes to commit."
+          if git diff --quiet infra/k8s/overlays/staging/kustomization.yaml; then
+            echo "No staging digest changes to commit."
             exit 0
           fi
-          git add infra/k8s/production/kustomization.yaml
-          git commit -m "ci: pin image digests from ${{ github.sha }}"
+          git add infra/k8s/overlays/staging/kustomization.yaml
+          git commit -m "deploy(staging): pin image digests from ${{ github.sha }}"
           git push
 
       - name: Notify enclii lifecycle
@@ -199,4 +205,4 @@ jobs:
           curl -sS -X POST "$ENCLII_API_URL/v1/callbacks/lifecycle-event" \
             -H "Authorization: Bearer $ENCLII_DEPLOY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d '{"project":"accionables-madlab","commit":"${{ github.sha }}","event":"image-digest-committed"}' || true
+            -d '{"project":"accionables-madlab","commit":"${{ github.sha }}","event":"staging-digest-committed","tier":"staging"}' || true

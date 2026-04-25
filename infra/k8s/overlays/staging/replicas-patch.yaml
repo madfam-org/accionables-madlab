@@ -1,0 +1,5 @@
+# Staging runs single-replica per deployment. Production may scale higher
+# in the future; this pin keeps staging at 1 regardless.
+- op: replace
+  path: /spec/replicas
+  value: 1

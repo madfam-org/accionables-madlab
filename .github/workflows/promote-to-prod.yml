@@ -1,0 +1,95 @@
+name: Promote staging → production
+
+# Manual promotion of the current staging digests into the production
+# overlay. Per RFC 0001 (3-tier dev-staging-prod-pipeline.md), production
+# changes are NOT automatic — they require a human pull on the trigger.
+#
+# Promotion is strictly a pointer update. This workflow does NOT rebuild
+# any image — it copies the digest from
+# `infra/k8s/overlays/staging/kustomization.yaml` into
+# `infra/k8s/production/kustomization.yaml`. ArgoCD reconciles prod from
+# there.
+#
+# To rebuild a fixed image then promote, push a fix to main first
+# (auto-deploys to staging), then run this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why are you promoting now? (shown in commit + audit log)"
+        required: true
+        type: string
+
+concurrency:
+  group: prod-promote
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    name: Copy staging digests to production
+    runs-on: ${{ vars.ARC_BOOTSTRAP_COMPLETE == 'true' && 'madfam-runners-blue' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.ENCLII_DEPLOY_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Install kustomize + yq
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Read staging digests
+        id: staging
+        run: |
+          STAGING="infra/k8s/overlays/staging/kustomization.yaml"
+          mapfile -t names < <(yq '.images[].name' "$STAGING")
+          mapfile -t digests < <(yq '.images[].digest' "$STAGING")
+          if [[ ${#names[@]} -ne ${#digests[@]} ]] || [[ ${#names[@]} -eq 0 ]]; then
+            echo "::error::Could not parse staging kustomization images block"
+            exit 1
+          fi
+          echo "Found ${#names[@]} image(s) in staging:"
+          for i in "${!names[@]}"; do
+            echo "  ${names[$i]} = ${digests[$i]}"
+          done
+          mkdir -p /tmp/promote
+          for i in "${!names[@]}"; do
+            echo "${names[$i]}=${digests[$i]}" >> /tmp/promote/digests.txt
+          done
+
+      - name: Update production digests
+        run: |
+          cd infra/k8s/production
+          while IFS='=' read -r name digest; do
+            echo "Promoting $name to $digest"
+            kustomize edit set image "${name}=${name}@${digest}"
+          done < /tmp/promote/digests.txt
+
+      - name: Commit & push promotion
+        run: |
+          git config user.name "madlab-ci[bot]"
+          git config user.email "ci@madlab.quest"
+          if git diff --quiet infra/k8s/production/kustomization.yaml; then
+            echo "::notice::Production already at the staging digest — no-op promotion"
+            exit 0
+          fi
+          git add infra/k8s/production/kustomization.yaml
+          git commit -m "$(printf 'deploy(prod): promote staging digests\n\nReason: %s\nTriggered by: %s\nWorkflow run: %s' "${{ inputs.reason }}" "${{ github.actor }}" "${{ github.run_id }}")"
+          git push
+
+      - name: Notify enclii lifecycle
+        if: env.ENCLII_API_URL != ''
+        env:
+          ENCLII_API_URL: ${{ secrets.ENCLII_API_URL }}
+          ENCLII_DEPLOY_TOKEN: ${{ secrets.ENCLII_DEPLOY_TOKEN }}
+        run: |
+          curl -sS -X POST "$ENCLII_API_URL/v1/callbacks/lifecycle-event" \
+            -H "Authorization: Bearer $ENCLII_DEPLOY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"project\":\"accionables-madlab\",\"commit\":\"${{ github.sha }}\",\"event\":\"prod-promotion\",\"actor\":\"${{ github.actor }}\",\"reason\":\"${{ inputs.reason }}\"}" || true

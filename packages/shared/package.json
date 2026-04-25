@@ -9,7 +9,16 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "build": "echo 'no build step — types-only package consumed via TS source'",
+    "lint": "echo 'no lint step'",
+    "test": "echo 'no tests yet'",
+    "type-check": "tsc --noEmit"
+  },
   "dependencies": {
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.3"
   }
 }

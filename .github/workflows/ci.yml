@@ -169,8 +169,11 @@ jobs:
         # Running with `npm --workspace=` from the root has the same shell
         # cwd but a different module-resolution starting point, and drizzle-kit
         # bails out with "please install required packages: 'drizzle-orm'".
+        # `--force` skips drizzle-kit's interactive confirmation prompt
+        # (drizzle.config.ts has `strict: true` for local-dev safety; in CI
+        # we want non-interactive auto-apply since the DB is ephemeral).
         working-directory: apps/server
-        run: npm run db:push
+        run: npx drizzle-kit push --force
       - name: Seed database
         working-directory: apps/server
         run: npm run seed

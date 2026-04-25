@@ -24,6 +24,7 @@
  */
 
 import axios, { type AxiosInstance, type AxiosError } from 'axios';
+import * as Sentry from '@sentry/react';
 import type {
   ApiResponse,
   ApiTask,
@@ -123,15 +124,45 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor — handle 401 by clearing auth + triggering logout
+// Response interceptor — handle 401 by clearing auth + triggering logout,
+// forward other server errors to Sentry for visibility.
+//
+// Sentry routing rules (added 2026-04-24):
+//   - 401: skipped. Expected during auth-token expiry; AuthContext owns the
+//     redirect flow. Logging these would spam every signed-out tab refresh.
+//   - Network errors (no `response`): skipped. These represent the user being
+//     offline / the API being unreachable — better tracked via uptime probes
+//     than per-user issue reports, which would otherwise flood Sentry from
+//     mobile users with flaky connections.
+//   - Everything else (4xx other than 401, all 5xx): forwarded with light
+//     request context. captureException is a safe no-op when Sentry isn't
+//     initialized (dev without VITE_SENTRY_DSN).
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    if (status === 401) {
       handleUnauthorized();
-    } else if (error.response?.status === 500) {
-      console.error('Server error:', error.message);
+      return Promise.reject(error);
     }
+    if (!error.response) {
+      // Network error / request never reached the server. Don't spam Sentry.
+      return Promise.reject(error);
+    }
+
+    Sentry.captureException(error, {
+      tags: {
+        statusCode: String(status),
+        source: 'apiClient',
+      },
+      contexts: {
+        request: {
+          method: error.config?.method?.toUpperCase(),
+          url: error.config?.url,
+          status,
+        },
+      },
+    });
     return Promise.reject(error);
   }
 );

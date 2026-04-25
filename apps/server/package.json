@@ -24,6 +24,7 @@
     "@fastify/helmet": "^13.0.2",
     "@fastify/rate-limit": "^10.3.0",
     "@madlab/shared": "*",
+    "@sentry/node": "^10.50.0",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.8.5",
     "jose": "^6.2.2",

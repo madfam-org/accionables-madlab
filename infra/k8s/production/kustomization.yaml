@@ -12,7 +12,7 @@ resources:
 - network-policies.yaml
 
 images:
-- digest: sha256:6a8891d68fe599ee3532817ac7edb2a99358bfb57bfa2ccb2996ab845cdc2ec4
+- digest: sha256:522322372dacba4a07e47f0ddd74ad8e3afeb5b8f5d520780ac2907fed7c5d03
   name: ghcr.io/madfam-org/accionables-madlab-client
   newName: ghcr.io/madfam-org/accionables-madlab-client
 - digest: sha256:f938c393b928d1ed999577e5129438c688b05d1f462aa380cc5856986d8c0be8

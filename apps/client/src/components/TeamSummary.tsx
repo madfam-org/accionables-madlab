@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { translations } from '../data/translations';
-import { teamMembers } from '../config/constants';
+import { useTeamMembers } from '../hooks/useTeamMembers';
 import { User, Clock, CheckSquare, Users } from 'lucide-react';
 import { Task } from '../data/types';
 
@@ -12,6 +12,7 @@ interface TeamSummaryProps {
 export const TeamSummary: React.FC<TeamSummaryProps> = ({ tasks }) => {
   const { language } = useAppStore();
   const t = translations[language];
+  const { data: teamMembers = [] } = useTeamMembers();
 
   // Calculate stats for each team member including "All"
   const teamMemberStats = useMemo(() => {

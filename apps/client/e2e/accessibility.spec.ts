@@ -1,99 +1,115 @@
 import { test, expect } from '@playwright/test';
 
+/**
+ * Accessibility smoke spec.
+ *
+ * These tests rely on UI structure (heading hierarchy, ARIA, keyboard nav)
+ * rather than seeded data. Per Wave 4, we navigate to /app directly so we
+ * are testing the dashboard chrome, not the marketing landing.
+ */
 test.describe('Accessibility', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/app');
+    await page
+      .getByRole('heading', { level: 1 })
+      .waitFor({ state: 'visible', timeout: 15000 });
   });
 
-  test('should have proper heading hierarchy', async ({ page }) => {
-    // Check for h1
+  test('@smoke has proper heading hierarchy', async ({ page }) => {
     const h1 = page.getByRole('heading', { level: 1 });
     await expect(h1).toBeVisible();
-
-    // Check that there's only one h1
-    const h1Count = await page.getByRole('heading', { level: 1 }).count();
-    expect(h1Count).toBe(1);
+    // App.tsx renders exactly one h1 inside <Header />.
+    expect(await h1.count()).toBe(1);
   });
 
-  test('should have accessible buttons', async ({ page }) => {
-    // All buttons should have accessible names
+  test('all rendered buttons have accessible names', async ({ page }) => {
     const buttons = await page.getByRole('button').all();
+    expect(buttons.length).toBeGreaterThan(0);
 
     for (const button of buttons) {
-      const accessibleName = await button.getAttribute('aria-label') || await button.textContent();
+      const ariaLabel = await button.getAttribute('aria-label');
+      const title = await button.getAttribute('title');
+      const text = await button.textContent();
+      const accessibleName = ariaLabel || title || (text || '').trim();
       expect(accessibleName).toBeTruthy();
     }
   });
 
-  test('should be keyboard navigable', async ({ page }) => {
-    // Start at the top
+  test('initial Tab focuses an interactive element', async ({ page }) => {
     await page.keyboard.press('Tab');
+    const firstFocusable = await page.evaluate(
+      () => document.activeElement?.tagName,
+    );
+    expect(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA']).toContain(
+      firstFocusable || '',
+    );
 
-    // Get the focused element
-    const firstFocusable = await page.evaluate(() => document.activeElement?.tagName);
-
-    // Should focus on an interactive element
-    expect(['BUTTON', 'A', 'INPUT', 'SELECT']).toContain(firstFocusable || '');
-
-    // Should be able to tab through elements
+    // Tab through a few more elements; each focused element should be a
+    // visible interactive element.
     for (let i = 0; i < 5; i++) {
       await page.keyboard.press('Tab');
-
       const focused = await page.evaluate(() => {
         const el = document.activeElement;
-        return el ? { tag: el.tagName, visible: el.checkVisibility() } : null;
+        if (!el) return null;
+        return {
+          tag: el.tagName,
+          // checkVisibility() is supported in Chromium 105+.
+          visible:
+            typeof (el as HTMLElement).checkVisibility === 'function'
+              ? (el as HTMLElement).checkVisibility()
+              : true,
+        };
       });
-
-      // Focused element should be visible
       if (focused) {
         expect(focused.visible).toBe(true);
       }
     }
   });
 
-  test('should have proper ARIA labels on interactive elements', async ({ page }) => {
-    // Progress bars should have proper role and attributes
+  test('progress bars expose required ARIA attributes', async ({ page }) => {
+    // Progress bars only render when there are tasks. Skip the assertion
+    // gracefully if none are present (post-Wave-4 the seed may be empty).
     const progressBars = page.locator('[role="progressbar"]');
     const count = await progressBars.count();
-
-    if (count > 0) {
-      const firstProgressBar = progressBars.first();
-      await expect(firstProgressBar).toHaveAttribute('aria-valuenow');
-      await expect(firstProgressBar).toHaveAttribute('aria-valuemin');
-      await expect(firstProgressBar).toHaveAttribute('aria-valuemax');
+    if (count === 0) {
+      test.info().annotations.push({
+        type: 'skip-reason',
+        description: 'No progressbars on screen — DB likely empty.',
+      });
+      return;
     }
+    const first = progressBars.first();
+    await expect(first).toHaveAttribute('aria-valuenow', /.+/);
+    await expect(first).toHaveAttribute('aria-valuemin', /.+/);
+    await expect(first).toHaveAttribute('aria-valuemax', /.+/);
   });
 
-  test('should have sufficient color contrast', async ({ page }) => {
-    // This is a basic test - for comprehensive contrast testing, use axe-core
+  test('body has a non-transparent background color', async ({ page }) => {
     const body = page.locator('body');
-    const backgroundColor = await body.evaluate((el) =>
-      window.getComputedStyle(el).backgroundColor
+    const backgroundColor = await body.evaluate(
+      (el) => window.getComputedStyle(el).backgroundColor,
     );
-
-    // Ensure background color is set
     expect(backgroundColor).toBeTruthy();
     expect(backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
   });
 
-  test('should have language attribute', async ({ page }) => {
+  test('@smoke html element has a language attribute', async ({ page }) => {
     const html = page.locator('html');
     const lang = await html.getAttribute('lang');
-
-    // Should have lang attribute set
     expect(lang).toBeTruthy();
+    // index.html ships with lang="en". The app does not currently mutate
+    // this when the language toggle flips, so allow either value.
     expect(['es', 'en', 'es-ES', 'en-US']).toContain(lang || '');
   });
 
-  test('should have descriptive link text', async ({ page }) => {
+  test('all rendered links have descriptive text or aria-label', async ({ page }) => {
     const links = await page.getByRole('link').all();
-
     for (const link of links) {
       const text = await link.textContent();
       const ariaLabel = await link.getAttribute('aria-label');
-
-      // Link should have either text content or aria-label
-      const hasDescription = (text && text.trim().length > 0) || (ariaLabel && ariaLabel.trim().length > 0);
+      const hasDescription =
+        (text && text.trim().length > 0) ||
+        (ariaLabel && ariaLabel.trim().length > 0);
       expect(hasDescription).toBe(true);
     }
   });

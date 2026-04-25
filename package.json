@@ -23,7 +23,8 @@
     "docker:rebuild": "docker compose up -d --build"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "drizzle-orm": "^0.45.2"
   },
   "engines": {
     "node": ">=20.0.0",

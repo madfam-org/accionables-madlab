@@ -1,0 +1,60 @@
+# Enclii service descriptor — read by switchyard-api / enclii CLI.
+# See internal-devops/RFC 0001 for the canonical schema.
+
+service: accionables-madlab
+description: Educational project dashboard (MADFAM × La Ciencia Del Juego)
+
+# Promotion policy. `auto` = each merge to main builds + deploys to staging
+# automatically. Production promotion is gated on a soak time + manual
+# approval via switchyard-ui.
+#
+# NOTE: madlab does not yet have a staging tier (RFC 0001 critical drift,
+# tracked separately). Until staging exists, this descriptor records the
+# intended policy; promotion runs through enclii-build.yml directly.
+promotion:
+  pattern: auto
+  min_soak_minutes: 30
+
+# Database name — switchyard-api uses this when provisioning per-tier
+# Postgres databases on the shared `data/postgres` namespace.
+db_name: madlab
+
+# Where the canonical secret list lives. switchyard-api reads this so the
+# secret bootstrap UI can show operators the required keys without leaking
+# values.
+secrets_file: apps/server/.env.example
+
+# Domains served by this service. Used by switchyard-api to provision the
+# Cloudflare Tunnel route mapping. Multiple entries supported for client +
+# api split.
+domains:
+  - host: madlab.quest
+    service: madlab-client
+    port: 80
+    namespace: madlab
+
+# Services and their K8s shape. switchyard-api uses this for health
+# rollups and the deployment-status dashboard.
+services:
+  - name: madlab-client
+    component: frontend
+    namespace: madlab
+    port: 80
+    health_path: /health
+  - name: madlab-server
+    component: backend
+    namespace: madlab
+    port: 80          # Service port (container is on 3001 — see deployment)
+    health_path: /api/health
+    liveness_path: /api/health/live
+
+# Janua client registration. switchyard-api can auto-register the client
+# with Janua and rotate credentials.
+auth:
+  provider: janua
+  client_name: accionables-madlab
+  audience: madlab-api
+
+# Owners — for paging, deploy notifications, ADR routing.
+owners:
+  - aldo

@@ -37,6 +37,25 @@ describe('parseEnv', () => {
       } as any),
     ).toThrow();
   });
+
+  it('accepts an absent SENTRY_DSN — observability is optional in dev', () => {
+    const env = parseEnv({ DATABASE_URL: 'x' } as any);
+    expect(env.SENTRY_DSN).toBeUndefined();
+  });
+
+  it('accepts a valid SENTRY_DSN URL', () => {
+    const env = parseEnv({
+      DATABASE_URL: 'x',
+      SENTRY_DSN: 'https=//abc@o0.ingest.sentry.io/1'.replace('=', ':'),
+    } as any);
+    expect(env.SENTRY_DSN).toBe('https://abc@o0.ingest.sentry.io/1');
+  });
+
+  it('rejects a malformed SENTRY_DSN', () => {
+    expect(() =>
+      parseEnv({ DATABASE_URL: 'x', SENTRY_DSN: 'not-a-url' } as any),
+    ).toThrow(/SENTRY_DSN/);
+  });
 });
 
 describe('resolveCorsOrigins', () => {

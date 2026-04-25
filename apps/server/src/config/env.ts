@@ -13,6 +13,9 @@ export const envSchema = z.object({
   JANUA_ISSUER: z.string().url().optional(),
   JANUA_AUDIENCE: z.string().optional(),
   JANUA_JWKS_URI: z.string().url().optional(),
+  // Optional. When unset, Sentry init is skipped (important for local dev so
+  // we don't ship noise to a missing project / require credentials in dev).
+  SENTRY_DSN: z.string().url().optional(),
 });
 
 export type Env = z.output<typeof envSchema>;

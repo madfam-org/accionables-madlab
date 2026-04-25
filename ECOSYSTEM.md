@@ -23,7 +23,7 @@ MADLAB is a live educational event product: 3-hour gamified science-and-tech pre
 |---|---|---|
 | `madlab-client` | (internal/event) | 3000 |
 
-**Kubernetes namespace**: `madlab`
+**Kubernetes namespace**: `accionables-madlab`
 **Cluster**: bare-metal k3s on Hetzner (see topology section below).
 
 ### Upstream dependencies (this repo consumes)

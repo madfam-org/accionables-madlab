@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny
-  namespace: madlab
+  namespace: accionables-madlab
 spec:
   podSelector: {}
   policyTypes: [Ingress, Egress]
@@ -11,7 +11,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-cloudflared-to-client
-  namespace: madlab
+  namespace: accionables-madlab
 spec:
   podSelector:
     matchLabels:
@@ -30,7 +30,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-client-to-server
-  namespace: madlab
+  namespace: accionables-madlab
 spec:
   podSelector:
     matchLabels:
@@ -52,7 +52,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-egress-dns-https
-  namespace: madlab
+  namespace: accionables-madlab
 spec:
   podSelector: {}
   policyTypes: [Egress]

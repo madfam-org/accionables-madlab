@@ -1,0 +1,25 @@
+apiVersion: enclii.dev/v1
+kind: Service
+metadata:
+  name: accionables-madlab
+  project: accionables-madlab
+spec:
+  runtime:
+    # Default port surfaced by the project. The K8s manifests in
+    # infra/k8s/production/ are the source of truth for actual ports;
+    # this is consumed by switchyard-api / enclii-CLI for tooling
+    # defaults (e.g. `enclii logs`).
+    port: 80
+  domains:
+    - name: madlab.quest
+    - name: www.madlab.quest
+  network:
+    services:
+      - name: madlab-client
+        port: 80
+        ingress: [cloudflare-tunnel]
+        egress: [dns, https]
+      - name: madlab-server
+        port: 3001
+        ingress: [cloudflare-tunnel]
+        egress: [dns, https, postgres, pgbouncer]

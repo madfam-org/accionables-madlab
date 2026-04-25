@@ -121,10 +121,44 @@ jobs:
         continue-on-error: true
 
   # ─── E2E + Build ──────────────────────────────────────────────────────────
+  # Spins up a real Postgres + API server before running Playwright so the
+  # client talks to the actual stack instead of mocks. Auth uses the dev-mock
+  # token (`dev-token-mock-user`) which the server only honors when
+  # NODE_ENV=development — see apps/server/src/middleware/auth.ts.
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    services:
+      # Service container is preferred over `docker compose up` here:
+      #   - GHA manages lifecycle, healthcheck, and log capture for free.
+      #   - One DB process, no inter-container DNS, no compose-file drift.
+      #   - Faster cold start than building the server image from compose.
+      # We still need the server itself in the host job (not as a service)
+      # because it's TS sources we want to run via tsx — building a Docker
+      # image on every CI run would dominate the wall-clock budget.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: madlab
+          POSTGRES_PASSWORD: madlab
+          POSTGRES_DB: madlab
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U madlab"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Server reads these. NODE_ENV=development gates the dev-mock token bypass
+      # in apps/server/src/middleware/auth.ts and also makes Janua optional in
+      # apps/server/src/config/env.ts (assertJanuaConfiguredIfProduction is a no-op).
+      NODE_ENV: development
+      DATABASE_URL: postgresql://madlab:madlab@localhost:5432/madlab
+      PORT: '3001'
+      HOST: '127.0.0.1'
+      CI: 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -134,12 +168,77 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
+
+      # Schema first, then seed. db:push is non-interactive in CI because
+      # there's no existing schema to diff against — drizzle-kit just emits
+      # the create statements.
+      - name: Apply database schema (drizzle push)
+        run: npm run db:push --workspace=apps/server
+        env:
+          # drizzle-kit reads DATABASE_URL directly from the env block above.
+          DATABASE_URL: postgresql://madlab:madlab@localhost:5432/madlab
+
+      - name: Seed database
+        run: npm run seed --workspace=apps/server
+        env:
+          DATABASE_URL: postgresql://madlab:madlab@localhost:5432/madlab
+
+      # Start the API server in the background. We use tsx (the dev script)
+      # rather than building first to keep the job fast — the server isn't
+      # under test here, only as a dependency for the client.
+      - name: Start API server (background)
+        run: |
+          npm run dev --workspace=apps/server > /tmp/server.log 2>&1 &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+        env:
+          NODE_ENV: development
+          DATABASE_URL: postgresql://madlab:madlab@localhost:5432/madlab
+          PORT: '3001'
+          HOST: '127.0.0.1'
+
+      - name: Wait for /api/health
+        run: |
+          # Poll for up to ~60s. The server's own waitForDatabase has a 30s
+          # budget, so we give it that plus a margin for tsx startup.
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3001/api/health > /dev/null; then
+              echo "API server is up after ${i} attempts"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API server failed to come up. Server log:"
+          cat /tmp/server.log || true
+          exit 1
+
+      # Playwright's existing webServer config starts vite (the client).
+      # We deliberately do NOT start the API via webServer because:
+      #   - The API needs the DB up first; webServer can't express that ordering.
+      #   - Two webServer entries would race the seed step.
+      # Local dev (`npm run test:e2e` outside CI) still works unchanged because
+      # webServer's `reuseExistingServer: !process.env.CI` lets the developer
+      # run their own server, and falls back to `npm run dev` (vite) otherwise.
       - name: Run E2E tests
         run: npm run test:e2e
         env:
-          CI: true
+          CI: 'true'
+
+      - name: Print server log on failure
+        if: failure()
+        run: |
+          echo "=== /tmp/server.log ==="
+          cat /tmp/server.log || true
+
+      - name: Stop API server
+        if: always()
+        run: |
+          if [ -n "${SERVER_PID:-}" ]; then
+            kill "$SERVER_PID" 2>/dev/null || true
+          fi
+
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: always()
@@ -147,6 +246,14 @@ jobs:
           name: playwright-report
           path: apps/client/playwright-report/
           retention-days: 30
+
+      - name: Upload server log
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-server-log
+          path: /tmp/server.log
+          retention-days: 7
 
   build:
     name: Build Application

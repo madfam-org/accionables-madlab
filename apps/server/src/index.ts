@@ -7,6 +7,9 @@ import { projectRoutes } from './routes/projects.js';
 import { taskRoutes } from './routes/tasks.js';
 import { agentRoutes } from './routes/agents.js';
 import { waitlistRoutes } from './routes/waitlist.js';
+import { phasesRoutes } from './routes/phases.js';
+import { userRoutes } from './routes/users.js';
+import { demoProjectRoutes } from './routes/demoProjects.js';
 import { closeDatabaseConnection, waitForDatabase } from './config/database.js';
 import {
   parseEnv,
@@ -14,6 +17,7 @@ import {
   assertJanuaConfiguredIfProduction,
 } from './config/env.js';
 import { globalErrorHandler, notFoundHandler } from './config/errorHandler.js';
+import { initSentry } from './config/sentry.js';
 
 // ============================================================================
 // Configuration — fail fast on bad env / missing prod requirements.
@@ -30,6 +34,11 @@ try {
   process.exit(1);
 }
 const isProduction = env.NODE_ENV === 'production';
+
+// Initialize Sentry BEFORE any Fastify code runs so server-side instrumentation
+// is in place when routes start handling traffic. Silently no-ops when
+// SENTRY_DSN is unset (local dev). See config/sentry.ts for sample-rate rationale.
+initSentry({ dsn: env.SENTRY_DSN, environment: env.NODE_ENV });
 
 // ============================================================================
 // Fastify bootstrap
@@ -94,6 +103,9 @@ await fastify.register(projectRoutes, { prefix: '/api' });
 await fastify.register(taskRoutes, { prefix: '/api' });
 await fastify.register(agentRoutes, { prefix: '/api' });
 await fastify.register(waitlistRoutes, { prefix: '/api' });
+await fastify.register(phasesRoutes, { prefix: '/api' });
+await fastify.register(userRoutes, { prefix: '/api' });
+await fastify.register(demoProjectRoutes, { prefix: '/api' });
 
 // ----- Shutdown -----
 

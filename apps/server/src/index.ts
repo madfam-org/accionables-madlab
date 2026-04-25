@@ -7,7 +7,7 @@ import { projectRoutes } from './routes/projects.js';
 import { taskRoutes } from './routes/tasks.js';
 import { agentRoutes } from './routes/agents.js';
 import { waitlistRoutes } from './routes/waitlist.js';
-import { closeDatabaseConnection } from './config/database.js';
+import { closeDatabaseConnection, waitForDatabase } from './config/database.js';
 import {
   parseEnv,
   resolveCorsOrigins,
@@ -108,6 +108,25 @@ for (const signal of signals) {
 }
 
 // ----- Start -----
+
+// Confirm the DB is reachable BEFORE accepting traffic. K8s cold-starts often
+// race the API ahead of Postgres; waitForDatabase retries with bounded
+// exponential backoff (~30s budget) before giving up. If we exit here, the
+// orchestrator will restart and try again — that's the correct behavior.
+try {
+  await waitForDatabase({
+    onAttempt: ({ attempt, error, nextDelayMs }) => {
+      fastify.log.warn(
+        { attempt, error, nextDelayMs },
+        'Database not ready yet, will retry',
+      );
+    },
+  });
+  fastify.log.info('Database connection verified');
+} catch (err) {
+  fastify.log.error({ err }, 'Database unreachable at startup, aborting');
+  process.exit(1);
+}
 
 try {
   await fastify.listen({ port: env.PORT, host: env.HOST });

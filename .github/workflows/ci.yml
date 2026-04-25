@@ -1,5 +1,15 @@
 name: CI/CD Pipeline
 
+# Quality gate for the monorepo. Every job below runs on both push-to-main
+# and pull-requests so that lint/type-check/test drift on main is caught
+# immediately (the previous monolithic "lint" job let TypeScript errors slip
+# through via continue-on-error, which is why we ended up with a 711-error
+# baseline before #15).
+#
+# Workspace coverage is intentionally explicit: server and client each get
+# their own lint, type-check, and test jobs so a single failure surfaces as
+# a single named status check that branch protection can require.
+
 on:
   push:
     branches: [main, develop, 'claude/**']
@@ -7,124 +17,169 @@ on:
     branches: [main, develop]
 
 jobs:
-  lint:
-    name: Lint & Format Check
+  # ─── apps/server ──────────────────────────────────────────────────────────
+  server-lint:
+    name: Server Lint
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-
       - name: Install dependencies
         run: npm ci
+      - name: ESLint (apps/server)
+        run: npm run lint --workspace=apps/server
 
-      - name: Run ESLint
-        run: npm run lint
-
-      - name: Check TypeScript
-        run: npm run type-check
-        continue-on-error: true # Allow to continue even if there are type errors
-
-  test:
-    name: Unit Tests
+  server-type-check:
+    name: Server Type Check
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-
       - name: Install dependencies
         run: npm ci
+      - name: tsc --noEmit (apps/server)
+        run: npm run type-check --workspace=apps/server
 
-      - name: Run unit tests
-        run: npm test -- --run
+  server-test:
+    name: Server Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Vitest (apps/server)
+        run: npm run test --workspace=apps/server
 
+  # ─── apps/client ──────────────────────────────────────────────────────────
+  client-lint:
+    name: Client Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: ESLint (apps/client)
+        run: npm run lint --workspace=apps/client
+
+  client-type-check:
+    name: Client Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: tsc --noEmit (apps/client)
+        run: npm run type-check --workspace=apps/client
+
+  client-test:
+    name: Client Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Vitest (apps/client)
+        run: npm run test --workspace=apps/client -- --run
       - name: Generate coverage report
-        run: npm run test:coverage -- --run
+        run: npm run test:coverage --workspace=apps/client -- --run
         continue-on-error: true
-
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         if: always()
         with:
-          file: ./coverage/coverage-final.json
+          file: apps/client/coverage/coverage-final.json
           flags: unittests
           name: codecov-umbrella
         continue-on-error: true
 
+  # ─── E2E + Build ──────────────────────────────────────────────────────────
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-
       - name: Install dependencies
         run: npm ci
-
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-
       - name: Run E2E tests
         run: npm run test:e2e
         env:
           CI: true
-
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: playwright-report
-          path: playwright-report/
+          path: apps/client/playwright-report/
           retention-days: 30
 
   build:
     name: Build Application
     runs-on: ubuntu-latest
-    needs: [lint, test]
-
+    needs:
+      [
+        server-lint,
+        server-type-check,
+        server-test,
+        client-lint,
+        client-type-check,
+        client-test,
+      ]
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-
       - name: Install dependencies
         run: npm ci
-
-      - name: Build application
+      - name: Build all workspaces
         run: npm run build
-
       - name: Check build size
         run: |
-          echo "Build size:" && du -sh dist/
-          echo "Detailed breakdown:" && du -sh dist/*
-
-      - name: Upload build artifacts
+          echo "Client build size:" && du -sh apps/client/dist/ || true
+          echo "Server build size:" && du -sh apps/server/dist/ || true
+      - name: Upload client build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build
-          path: dist/
+          path: apps/client/dist/
           retention-days: 7
 
   deploy-preview:
@@ -132,16 +187,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build, e2e]
     if: github.event_name == 'pull_request'
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: build
           path: dist/
-
       - name: Deploy to Vercel (Preview)
         uses: amondnet/vercel-action@v25
         with:
@@ -157,16 +209,13 @@ jobs:
     needs: [build, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           name: build
           path: dist/
-
       - name: Deploy to Vercel (Production)
         uses: amondnet/vercel-action@v25
         with:

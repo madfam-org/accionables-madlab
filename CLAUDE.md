@@ -129,11 +129,14 @@ Comprehensive documentation is available in `/docs/`:
 - **[Guides](./docs/guides/)** - Developer workflow guides
 - **[Tutorials](./docs/tutorials/)** - Step-by-step learning guides
 
-## Stability Remediation — Waves 0 & 1 (2026-04-24)
+## Stability Remediation — Waves 0–2 (2026-04-24)
 
-Combined: real authentication, full route gating, request validation, 76
-server tests + 147 client tests, bootstrap hardened, client bearer/401 flow,
-lint unblocked, vulns triaged.
+Three waves landed in one branch: real authentication + full route gating +
+request validation (Wave 0); identity bridge + bootstrap hardening + client
+bearer flow + lint unblocked (Wave 1); vuln burn-down + DB pool hardening +
+real CI gates (Wave 2). Server: 103 tests (was 0). Client: 147 tests
+(was 140). Both workspace lints clean. Vulns: 25 high/critical → 0 (4 dev-only
+moderates remain).
 
 ### Resolved
 - ~~🔴 Trust-the-payload JWT verification~~ — `apps/server/src/middleware/auth.ts`
@@ -170,23 +173,33 @@ lint unblocked, vulns triaged.
   300 req/min, using forwarded-for for identification.
 - ~~🟡 Baseline ESLint broken~~ — root `.eslintrc.js` deleted; workspaces own
   their configs; both `npm run lint --workspace=apps/...` pass (warnings only).
-- ~~🟡 npm vulns — auto-fixable tier~~ — 25 → 9 remaining (all 3 remaining
-  need major-version bumps, tracked separately).
+- ~~🟡 npm vulns — non-breaking tier~~ — `npm audit fix` brought 25 → 9.
+- ~~🟡 npm vulns — breaking tier~~ — fastify 4→5 + plugin majors,
+  drizzle-orm 0.33→0.45, @fastify/jwt removed (unused); 9 → 0 high/critical.
+- ~~🟡 DB pool ignored SSL, no retry, no real health probe~~ — `database.ts`
+  parses `sslmode` from `DATABASE_URL` (prefer/require/verify-ca/verify-full);
+  `waitForDatabase` runs an exponential-backoff ping (500→5000ms, 30s budget)
+  before `fastify.listen`; `/api/health` does a real `SELECT 1` (200 ok /
+  503 degraded); split `/api/health/live` exists for K8s liveness (no DB
+  touch — a transient blip should never restart the pod).
+- ~~🟡 CI didn't actually gate~~ — `.github/workflows/ci.yml` refactored
+  into 6 explicit jobs (server/client × lint/type-check/test). Removed
+  `continue-on-error: true` from type-check (root cause of TS errors slipping
+  through historically).
 - ~~🔴 R3: Unauthenticated admin endpoint~~ — `/waitlist/stats` gated with
   `[verifyJWT, requireRoles('admin')]`.
 
 ### Outstanding
+- **🟢 User must enable branch protection** — required check names are
+  documented in task #23. CI gates exist; they just need to be required.
 - **🟡 Auth storage key drift** — `AuthContext` stores under `madlab_auth`
   (JSON blob), but `api/client.ts` reads from `auth_token`/`auth_user`. Until
   unified, bearer header is empty for existing users. Task #21.
-- **🟡 3 breaking-bump vulns remain** — `@fastify/jwt` → 10 (closes fast-jwt
-  CRITICAL iss-validation), `fastify` → 5 (sendWebStream DoS), `drizzle-orm`
-  → 0.45 (SQL injection via identifiers). Each needs its own focused PR.
-  Task #22.
 - **🟡 6 jsx-a11y violations** surfaced once lint started working; rules
   downgraded to warnings to keep CI green. Task #20.
-- **🟡 No server SSL/retry on DB pool** — Task #9.
 - **🟡 No observability SDK** — stdout logs only. Task #12.
+- **🟢 4 dev-only moderate vulns remain** — all in `drizzle-kit`'s
+  `@esbuild-kit/*` transitive (esbuild). Runtime is clean.
 
 ### New server env vars
 `verifyJWT` requires these in production (fail-closed if missing):

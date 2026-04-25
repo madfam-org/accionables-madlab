@@ -15,11 +15,12 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react';
-import { DEMO_PROJECTS, DemoProject } from '../data/demoProjects';
+import { useDemoProjects, type DemoProject } from '../hooks/useDemoProjects';
 import { useAppStore } from '../stores/appStore';
 import { waitlistApi } from '../api/waitlist';
 
 export function LandingPage() {
+  const { data: demoProjects = [] } = useDemoProjects();
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -304,7 +305,7 @@ export function LandingPage() {
 
             {/* Demo Project Cards */}
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {DEMO_PROJECTS.slice(0, 6).map((project) => (
+              {demoProjects.slice(0, 6).map((project) => (
                 <DemoProjectCard
                   key={project.id}
                   project={project}

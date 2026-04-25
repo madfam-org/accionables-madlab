@@ -7,6 +7,9 @@ import { projectRoutes } from './routes/projects.js';
 import { taskRoutes } from './routes/tasks.js';
 import { agentRoutes } from './routes/agents.js';
 import { waitlistRoutes } from './routes/waitlist.js';
+import { phasesRoutes } from './routes/phases.js';
+import { userRoutes as usersDomainRoutes } from './routes/users.js';
+import { demoProjectRoutes } from './routes/demoProjects.js';
 import { closeDatabaseConnection, waitForDatabase } from './config/database.js';
 import {
   parseEnv,
@@ -100,6 +103,9 @@ await fastify.register(projectRoutes, { prefix: '/api' });
 await fastify.register(taskRoutes, { prefix: '/api' });
 await fastify.register(agentRoutes, { prefix: '/api' });
 await fastify.register(waitlistRoutes, { prefix: '/api' });
+await fastify.register(phasesRoutes, { prefix: '/api' });
+await fastify.register(usersDomainRoutes, { prefix: '/api' });
+await fastify.register(demoProjectRoutes, { prefix: '/api' });
 
 // ----- Shutdown -----
 

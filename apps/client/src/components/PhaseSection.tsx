@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAppStore } from '../stores/appStore';
-import { getPhaseTitle } from '../config/constants';
+import { usePhases, buildPhaseTitle } from '../hooks/usePhases';
 import { EnhancedTaskCard } from './EnhancedTaskCard';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Task } from '../data/types';
@@ -13,9 +13,10 @@ interface PhaseSectionProps {
 export const PhaseSection: React.FC<PhaseSectionProps> = ({ phase, tasks }) => {
   const { language, viewMode, collapsedPhases, togglePhase } = useAppStore();
 
+  const { data: phases = [] } = usePhases();
   const isCollapsed = collapsedPhases.has(phase);
   const phaseTasks = tasks.filter(task => task.phase === phase);
-  const phaseTitle = getPhaseTitle(phase, language);
+  const phaseTitle = buildPhaseTitle(phases, phase, language);
 
   if (phaseTasks.length === 0) return null;
 

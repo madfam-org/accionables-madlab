@@ -15,7 +15,7 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react';
-import { DEMO_PROJECTS, DemoProject } from '../data/demoProjects';
+import { useDemoProjects, type DemoProject } from '../hooks/useDemoProjects';
 import { useAppStore } from '../stores/appStore';
 import { waitlistApi } from '../api/waitlist';
 
@@ -28,6 +28,11 @@ export function LandingPage() {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const navigate = useNavigate();
   const { setCulminatingEvent, setGanttConfig } = useAppStore();
+
+  // Demo projects come from `GET /api/demo-projects` (public). The hook
+  // ships an empty array as initial state; on first paint the section
+  // renders skeleton-empty until the request resolves (typically <100ms).
+  const { data: demoProjects = [] } = useDemoProjects();
 
   // Fetch waitlist count for social proof
   useEffect(() => {
@@ -304,7 +309,7 @@ export function LandingPage() {
 
             {/* Demo Project Cards */}
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {DEMO_PROJECTS.slice(0, 6).map((project) => (
+              {demoProjects.slice(0, 6).map((project) => (
                 <DemoProjectCard
                   key={project.id}
                   project={project}

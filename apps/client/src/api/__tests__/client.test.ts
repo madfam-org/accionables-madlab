@@ -16,11 +16,23 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { AxiosAdapter, InternalAxiosRequestConfig } from 'axios';
+
+// Mock @sentry/react before importing the SUT so the captureException spy
+// is what the interceptor sees. vi.mock is hoisted by vitest.
+vi.mock('@sentry/react', () => ({
+  captureException: vi.fn(),
+  init: vi.fn(),
+  ErrorBoundary: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+import * as Sentry from '@sentry/react';
 import apiClient, {
   AUTH_TOKEN_KEY,
   AUTH_USER_KEY,
   setAuthLogoutHandler,
 } from '../client';
+
+const captureExceptionSpy = vi.mocked(Sentry.captureException);
 
 const LEGACY_AUTH_KEY = 'madlab_auth';
 
@@ -66,13 +78,16 @@ describe('apiClient interceptors', () => {
   beforeEach(() => {
     localStorage.clear();
     setAuthLogoutHandler(null);
+    captureExceptionSpy.mockClear();
   });
 
   afterEach(() => {
     apiClient.defaults.adapter = originalAdapter;
     setAuthLogoutHandler(null);
     localStorage.clear();
-    vi.restoreAllMocks();
+    // Note: do NOT call vi.restoreAllMocks() here — it would restore the
+    // module mock for @sentry/react and break subsequent tests.
+    captureExceptionSpy.mockClear();
   });
 
   describe('request interceptor', () => {
@@ -210,6 +225,65 @@ describe('apiClient interceptors', () => {
 
       expect(logoutSpy).not.toHaveBeenCalled();
       expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBe('still-valid');
+    });
+  });
+
+  describe('response interceptor — Sentry capture', () => {
+    it('captures 500 responses with request context', async () => {
+      apiClient.defaults.adapter = makeAdapter({ status: 500 });
+
+      await expect(apiClient.get('/boom')).rejects.toBeDefined();
+
+      expect(captureExceptionSpy).toHaveBeenCalledTimes(1);
+      const [, opts] = captureExceptionSpy.mock.calls[0]!;
+      const narrowed = opts as {
+        tags: Record<string, string>;
+        contexts: { request: Record<string, unknown> };
+      };
+      expect(narrowed.tags).toMatchObject({
+        statusCode: '500',
+        source: 'apiClient',
+      });
+      expect(narrowed.contexts.request).toMatchObject({
+        method: 'GET',
+        url: '/boom',
+        status: 500,
+      });
+    });
+
+    it('captures non-401 4xx (e.g. 403, 404, 422)', async () => {
+      apiClient.defaults.adapter = makeAdapter({ status: 403 });
+      await expect(apiClient.get('/forbidden')).rejects.toBeDefined();
+      expect(captureExceptionSpy).toHaveBeenCalledTimes(1);
+      const [, opts] = captureExceptionSpy.mock.calls[0]!;
+      expect((opts as { tags: { statusCode: string } }).tags.statusCode).toBe(
+        '403',
+      );
+    });
+
+    it('does NOT capture 401 — auth-flow expected, would spam Sentry', async () => {
+      localStorage.setItem(AUTH_TOKEN_KEY, 'expired');
+      apiClient.defaults.adapter = makeAdapter({ status: 401 });
+
+      await expect(apiClient.get('/protected')).rejects.toBeDefined();
+
+      expect(captureExceptionSpy).not.toHaveBeenCalled();
+    });
+
+    it('does NOT capture network errors (no response) — better tracked via uptime probes', async () => {
+      // Build an adapter that rejects with no `response` property — the
+      // shape axios produces when the request never made it to a server
+      // (DNS failure, offline user, CORS preflight rejection, etc.).
+      apiClient.defaults.adapter = (config) => {
+        const err: any = new Error('Network Error');
+        err.isAxiosError = true;
+        err.config = config;
+        // Critically, no `response` set.
+        return Promise.reject(err);
+      };
+
+      await expect(apiClient.get('/anywhere')).rejects.toBeDefined();
+      expect(captureExceptionSpy).not.toHaveBeenCalled();
     });
   });
 });

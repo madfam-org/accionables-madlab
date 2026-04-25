@@ -196,7 +196,12 @@ jobs:
           cat /tmp/server.log
           exit 1
       - name: Run E2E tests
-        run: npm run test:e2e --workspace=apps/client
+        # Scope to chromium only — CI installs `--with-deps chromium`, so
+        # firefox/webkit/Mobile-* projects in playwright.config.ts can't
+        # launch and fail with "browserType.launch" errors. Local dev still
+        # gets the full multi-browser coverage when `playwright install`
+        # runs without filters.
+        run: npm run test:e2e --workspace=apps/client -- --project=chromium
         env:
           CI: true
       - name: Stop API server

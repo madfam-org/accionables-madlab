@@ -7,7 +7,7 @@
 # production/ → base/ and adds overlays/production/ as a symmetric peer.
 #
 # What staging differs from prod on:
-#   - namespace: madlab-staging
+#   - namespace: accionables-madlab-staging
 #   - replicas: 1 per deploy
 #   - hostname: staging.madlab.quest (set at the Cloudflare Tunnel layer
 #     via switchyard-api after this overlay merges; the .enclii.yml at
@@ -21,13 +21,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: madlab-staging
+namespace: accionables-madlab-staging
 
 resources:
   - ../../production
 
 # Staging gets its own namespace; every resource is moved.
-namespace: madlab-staging
+namespace: accionables-madlab-staging
 
 # Patches layered onto the production manifests.
 patches:

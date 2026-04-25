@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: madlab-client
-  namespace: madlab
+  namespace: accionables-madlab
   labels:
     app: madlab-client
     app.kubernetes.io/name: madlab-client

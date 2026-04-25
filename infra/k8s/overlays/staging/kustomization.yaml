@@ -1,0 +1,55 @@
+# Staging overlay — imports production manifests, applies staging-specific patches.
+#
+# Pilot of RFC 0001 (internal-devops/rfcs/0001-dev-staging-prod-pipeline.md).
+# Shape mirrors karafiel's overlay (the existing reference implementation).
+# `infra/k8s/production/` remains the canonical base during Phase 1; once all
+# services adopt overlays and ArgoCD reconciles cleanly, a follow-up renames
+# production/ → base/ and adds overlays/production/ as a symmetric peer.
+#
+# What staging differs from prod on:
+#   - namespace: madlab-staging
+#   - replicas: 1 per deploy
+#   - hostname: staging.madlab.quest (set at the Cloudflare Tunnel layer
+#     via switchyard-api after this overlay merges; the .enclii.yml at
+#     repo root is the source of truth for the route mapping)
+#   - secrets: madlab-server-secrets-staging (staging never reads prod
+#     secrets — see RFC 0001 secrets table)
+#   - image digest: updated by enclii-build.yml on every main merge;
+#     production digest is updated only by promote-to-prod.yml (manual)
+#   - logging: SENTRY_ENVIRONMENT=staging tags errors so prod dashboards
+#     aren't polluted
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: madlab-staging
+
+resources:
+  - ../../production
+
+# Staging gets its own namespace; every resource is moved.
+namespace: madlab-staging
+
+# Patches layered onto the production manifests.
+patches:
+  - path: env-patch.yaml
+    target:
+      kind: Deployment
+      name: madlab-server
+  - path: replicas-patch.yaml
+    target:
+      kind: Deployment
+  - path: secrets-patch.yaml
+    target:
+      kind: Deployment
+      name: madlab-server
+
+# Staging digests are updated by enclii-build.yml on every main merge.
+# The values below are placeholders that match production at branch
+# creation; they get overwritten on first staging deploy.
+images:
+  - name: ghcr.io/madfam-org/accionables-madlab-client
+    newName: ghcr.io/madfam-org/accionables-madlab-client
+    digest: sha256:6a8891d68fe599ee3532817ac7edb2a99358bfb57bfa2ccb2996ab845cdc2ec4
+  - name: ghcr.io/madfam-org/accionables-madlab-server
+    newName: ghcr.io/madfam-org/accionables-madlab-server
+    digest: sha256:f938c393b928d1ed999577e5129438c688b05d1f462aa380cc5856986d8c0be8

@@ -659,20 +659,9 @@ jobs:
           name: dist
           path: dist/
           
-  deploy:
-    needs: [build, e2e]
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/download-artifact@v3
-        with:
-          name: dist
-          path: dist/
-      - name: Deploy to Vercel
-        run: |
-          npm i -g vercel
-          vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+  # Deployment is handled by enclii (see .github/workflows/enclii-build.yml).
+  # On push to main: image build + sign → registry → auto-commit digest →
+  # ArgoCD reconciles the madlab namespace. No CI-side deploy step needed.
 ```
 
 ---

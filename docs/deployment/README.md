@@ -1,314 +1,106 @@
-# Deployment Documentation
+# Deployment
 
-Complete deployment guides for the MADLAB application, covering Vercel deployment, environment configuration, production optimization, and monitoring.
+Production deployment is handled by **enclii**, MADFAM's internal platform that
+provisions and manages the K8s namespace, ArgoCD application, Cloudflare
+tunnel routes, and Janua client. This file is a quick orientation; for
+ecosystem-wide context see `ECOSYSTEM.md` at the repo root.
 
-## 📑 Contents
+## How a change reaches production
 
-1. **[Vercel Deployment](./vercel.md)** - Deploy to Vercel platform
-2. **[Environment Configuration](./environment.md)** - Environment setup and variables
-3. **[Production Optimization](./production.md)** - Performance and build optimization
-4. **[Monitoring & Analytics](./monitoring.md)** - Production monitoring setup
-
-## 🚀 Quick Deployment
-
-### One-Click Vercel Deployment
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-org/accionables-madlab)
-
-### Manual Deployment Steps
-1. **Build Application**: `npm run build`
-2. **Test Build**: `npm run preview`
-3. **Deploy to Vercel**: Connect GitHub repository
-4. **Configure Domain**: Set up custom domain (optional)
-5. **Monitor Performance**: Set up analytics and monitoring
-
-## 🏗️ Deployment Architecture
-
-### Production Stack
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Vercel CDN    │ -> │   Static Files  │ -> │   Browser       │
-│   (Global)      │    │   (Optimized)   │    │   (Client)      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+git push origin main
+        │
+        ▼
+GitHub Actions / ci.yml          → quality gates (server/client × lint/type-check/test, e2e, build)
+GitHub Actions / enclii-build    → docker image build + sign + push to madfam registry
+        │                          (auto-commits new image digest into infra/k8s/production/kustomization.yaml)
+        ▼
+ArgoCD watches infra/k8s/production/
+        │
+        ▼
+K8s rollout in the madlab namespace
 ```
 
-### Static Site Generation
-- **Pre-built**: All content generated at build time
-- **CDN Cached**: Global edge network delivery
-- **No Server**: Client-side only application
-- **Fast Loading**: Optimized asset delivery
+There is **no CI-side `deploy` step** to a third-party platform. Image build
++ ArgoCD sync are the deployment.
 
-## 📦 Build Configuration
+## Required production environment
 
-### Production Build
+The server refuses to start in production without these (intentional —
+fail-closed behavior added in stability Wave 1):
+
+| Var | Purpose |
+|---|---|
+| `DATABASE_URL` | Postgres connection (shared `data/postgres` namespace) |
+| `JANUA_ISSUER` | OIDC issuer URL for Janua |
+| `JANUA_AUDIENCE` | Token audience the API expects |
+| `JANUA_JWKS_URI` | Public key set for RS256 verification |
+| `ALLOWED_ORIGINS` | Comma-separated CORS allowlist (empty = startup refuses) |
+| `NODE_ENV` | Must be `production` to enable strict checks |
+
+Optional (silent no-op when unset):
+- `SENTRY_DSN` — enables server-side error tracking
+- `VITE_SENTRY_DSN` — enables client-side error tracking (build-time)
+
+These are managed via the K8s secret materialized by enclii — see
+`infra/k8s/production/secrets-template.yaml` for the shape.
+
+## Local production-mode build
+
 ```bash
-# Create optimized production build
-npm run build
+# Build artifacts
+npm run build                    # builds both workspaces
 
-# Output directory: dist/
-# Assets: Minified and optimized
-# Bundle: Code-split and tree-shaken
+# Run server in prod mode locally (requires DATABASE_URL + JANUA_*)
+NODE_ENV=production \
+  DATABASE_URL=postgresql://... \
+  JANUA_ISSUER=... \
+  JANUA_AUDIENCE=... \
+  JANUA_JWKS_URI=... \
+  ALLOWED_ORIGINS=https://your.origin \
+  node apps/server/dist/index.js
+
+# Health probe
+curl http://localhost:3001/api/health        # readiness — does SELECT 1
+curl http://localhost:3001/api/health/live   # liveness — no DB touch
 ```
 
-### Build Output Analysis
-```
-dist/
-├── index.html                    # Entry point (0.65 kB)
-├── assets/
-│   ├── index-Q4DwXtZQ.css       # Styles (23.92 kB)
-│   ├── index-D2C3-cn7.js        # Main bundle (73.99 kB)
-│   ├── react-vendor-CIP6LD3P.js # React vendor (140.88 kB)
-│   ├── state-vendor-CS_zR3HJ.js # State management (4.48 kB)
-│   └── utils-l0sNRNKZ.js        # Utilities (0.00 kB)
-```
+If `DATABASE_URL` includes `sslmode=require` (or `prefer`/`verify-ca`/
+`verify-full`), the pool enables SSL automatically. See
+`apps/server/src/config/database.ts` for the resolution logic.
 
-## 🌐 Platform Options
+## What runs where
 
-### Recommended: Vercel
-- **Optimized for React**: Built-in optimizations
-- **GitHub Integration**: Automatic deployments
-- **Global CDN**: Fast worldwide delivery
-- **Zero Config**: Works out of the box
-- **Free Tier**: Perfect for this project
+| Component | Where | Image |
+|---|---|---|
+| API (Fastify) | `madlab` namespace, K8s | `apps/server/Dockerfile` (built by enclii-build.yml) |
+| Client (React) | `madlab` namespace, K8s, served via nginx | `apps/client/Dockerfile` |
+| Postgres | `data/postgres` namespace, shared | platform-managed |
+| TLS / routing | Cloudflare tunnel → enclii ingress | platform-managed |
+| Auth | Janua OIDC | `auth.madfam.io` |
 
-### Alternative Platforms
+## Pre-deploy checklist
 
-#### Netlify
-```bash
-# Build command: npm run build
-# Publish directory: dist
-# Functions: Not needed
-```
+Quality gates run automatically in CI; once those are green and the PR
+merges, the rest is platform-managed. Manual checks that matter:
 
-#### AWS S3 + CloudFront
-```bash
-# Build and sync to S3
-npm run build
-aws s3 sync dist/ s3://your-bucket --delete
-aws cloudfront create-invalidation --distribution-id YOUR_ID --paths "/*"
-```
+- [ ] Required env vars set in the K8s secret for the namespace
+- [ ] `infra/k8s/production/kustomization.yaml` has the correct image digests
+      (auto-committed by enclii-build but worth a glance after a major bump)
+- [ ] If JWT/auth changed: confirm staging accepts a real Janua token
+- [ ] If schema changed: drizzle migrations applied (`npm run db:migrate`
+      against the prod DB, gated through the platform)
 
-#### GitHub Pages
-```bash
-# Add to package.json
-"homepage": "https://username.github.io/accionables-madlab"
+## Rollback
 
-# Deploy script
-npm run build
-npx gh-pages -d dist
-```
+ArgoCD-driven. Revert the offending commit, push to main, the next
+enclii-build run will roll the image digest backward and ArgoCD reconciles.
+Don't try to roll back at the K8s level directly — kustomization.yaml
+is the source of truth and ArgoCD will overwrite manual edits.
 
-## ⚡ Performance Optimization
+## Related docs
 
-### Bundle Analysis
-```bash
-# Analyze bundle size
-npm run build
-
-# Bundle composition:
-# - React vendor: 45.25 kB gzipped
-# - Main application: 17.58 kB gzipped
-# - CSS: 4.81 kB gzipped
-# - Total: ~68 kB gzipped
-```
-
-### Optimization Features
-- **Code Splitting**: Automatic vendor/app separation
-- **Tree Shaking**: Dead code elimination
-- **Minification**: JavaScript and CSS compression
-- **Asset Optimization**: Image and font optimization
-- **Gzip Compression**: Server-side compression
-
-### Performance Targets
-- **First Contentful Paint**: < 1.5s
-- **Largest Contentful Paint**: < 2.5s
-- **Cumulative Layout Shift**: < 0.1
-- **Time to Interactive**: < 3.0s
-- **Lighthouse Score**: > 90 (all metrics)
-
-## 🔧 Configuration Files
-
-### Vercel Configuration (`vercel.json`)
-```json
-{
-  "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/assets/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
-        }
-      ]
-    }
-  ]
-}
-```
-
-### Build Script Configuration
-```json
-{
-  "scripts": {
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "deploy": "npm run build && vercel --prod"
-  },
-  "engines": {
-    "node": ">=16.0.0",
-    "npm": ">=8.0.0"
-  }
-}
-```
-
-## 🚨 Pre-Deployment Checklist
-
-### Code Quality
-- [ ] All TypeScript errors resolved
-- [ ] ESLint passes with no errors
-- [ ] Build completes successfully
-- [ ] Preview build works correctly
-- [ ] All features tested in production mode
-
-### Performance
-- [ ] Bundle size under target (< 300KB)
-- [ ] No unused dependencies
-- [ ] Images optimized
-- [ ] CSS minified
-- [ ] JavaScript minified and tree-shaken
-
-### Functionality
-- [ ] All core features working
-- [ ] Theme switching functional
-- [ ] Language switching functional
-- [ ] Export functionality working
-- [ ] Responsive design verified
-- [ ] Cross-browser compatibility tested
-
-### Content
-- [ ] All tasks data included (109 tasks)
-- [ ] Team information accurate
-- [ ] Translations complete
-- [ ] No placeholder content
-- [ ] Documentation updated
-
-## 📊 Deployment Monitoring
-
-### Key Metrics to Monitor
-- **Build Success Rate**: 100% target
-- **Build Time**: < 2 minutes target
-- **Bundle Size**: Monitor growth over time
-- **Performance Scores**: Lighthouse metrics
-- **Error Rates**: JavaScript errors in production
-
-### Monitoring Tools
-- **Vercel Analytics**: Built-in performance monitoring
-- **Web Vitals**: Core web vitals tracking
-- **Browser DevTools**: Performance debugging
-- **Lighthouse CI**: Automated performance testing
-
-## 🔄 Continuous Deployment
-
-### GitHub Integration
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy to Vercel
-on:
-  push:
-    branches: [main]
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - run: npm ci
-      - run: npm run build
-      - uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.ORG_ID }}
-          vercel-project-id: ${{ secrets.PROJECT_ID }}
-```
-
-### Automated Testing
-- **Build Verification**: Ensure builds complete
-- **Bundle Size Check**: Prevent bundle bloat
-- **Performance Budgets**: Maintain performance
-- **Link Checking**: Verify no broken links
-
-## 🛡️ Security Considerations
-
-### Static Site Security
-- **No Server Vulnerabilities**: Client-side only
-- **HTTPS Enforced**: Vercel provides SSL
-- **Content Security**: No external dependencies
-- **Data Privacy**: No personal data collection
-
-### Headers Configuration
-```json
-{
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        }
-      ]
-    }
-  ]
-}
-```
-
-## 🎯 Post-Deployment Tasks
-
-### Immediate Actions
-1. **Verify Deployment**: Check all functionality works
-2. **Test Performance**: Run Lighthouse audit
-3. **Check Analytics**: Confirm monitoring setup
-4. **Domain Setup**: Configure custom domain if needed
-5. **Share with Team**: Notify stakeholders
-
-### Ongoing Maintenance
-- **Monitor Performance**: Weekly performance checks
-- **Update Dependencies**: Monthly security updates
-- **Content Updates**: Keep project data current
-- **Performance Optimization**: Continuous improvement
-- **User Feedback**: Collect and act on feedback
-
-## 📞 Support and Troubleshooting
-
-### Common Deployment Issues
-- **Build Failures**: Check TypeScript errors
-- **Asset Loading**: Verify asset paths
-- **Performance Issues**: Analyze bundle size
-- **Routing Problems**: Check SPA configuration
-
-### Getting Help
-- **Vercel Documentation**: Comprehensive guides
-- **GitHub Issues**: Project-specific problems
-- **Community Support**: Developer community
-- **Team Members**: Internal support
+- `ECOSYSTEM.md` (repo root) — how MADLAB fits into the broader MADFAM stack
+- `infra/k8s/production/` — the actual manifests
+- `.github/workflows/ci.yml` — quality gates
+- `.github/workflows/enclii-build.yml` — image build + sign

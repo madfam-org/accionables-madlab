@@ -46,7 +46,7 @@ npm run dev
 - **Estilos**: Tailwind CSS + CSS personalizado
 - **Iconos**: Lucide React
 - **Exportación**: PDF/CSV/JSON/TXT
-- **Despliegue**: Vercel (recomendado)
+- **Despliegue**: enclii (plataforma interna de MADFAM, GitOps via ArgoCD)
 
 ## 👥 Equipo
 

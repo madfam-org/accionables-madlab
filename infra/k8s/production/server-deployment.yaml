@@ -30,7 +30,14 @@ spec:
         - name: ghcr-credentials
       containers:
         - name: server
-          image: ghcr.io/madfam-org/accionables-madlab-server:latest
+          # Image digest is pinned via kustomization.yaml `images:` block.
+          # The fallback digest below is a Kyverno-compliant placeholder:
+          # it satisfies `disallow-latest-tag` and `require-image-digest`
+          # admission policies even if kustomize is bypassed (e.g., a raw
+          # `kubectl apply -f` of this file). enclii-build's
+          # `kustomize edit set image` overrides it with the freshly-built
+          # digest on every push to main.
+          image: ghcr.io/madfam-org/accionables-madlab-server@sha256:f938c393b928d1ed999577e5129438c688b05d1f462aa380cc5856986d8c0be8
           ports:
             - containerPort: 3001
           env:

@@ -17,6 +17,22 @@ on:
     branches: [main, develop]
 
 jobs:
+  # ─── Security: prevent TODO-flagged auth from shipping (Audit R3 follow-up) ──
+  security-todo-auth-grep:
+    name: Security — No TODO-auth markers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if TODO comments mention auth in source
+        run: |
+          # Reject patterns like "TODO: Add auth", "TODO add authn", etc.
+          # Source dirs only — vendored deps and build artefacts excluded.
+          if grep -RInE "TODO[^\n]*[Aa]uth" apps/server/src apps/client/src packages/shared/src 2>/dev/null; then
+            echo "::error::Found TODO comment referencing auth. Fix or remove the TODO before merge."
+            exit 1
+          fi
+          echo "OK: no TODO-auth markers in source."
+
   # ─── apps/server ──────────────────────────────────────────────────────────
   server-lint:
     name: Server Lint

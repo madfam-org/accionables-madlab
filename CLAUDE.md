@@ -129,14 +129,14 @@ Comprehensive documentation is available in `/docs/`:
 - **[Guides](./docs/guides/)** - Developer workflow guides
 - **[Tutorials](./docs/tutorials/)** - Step-by-step learning guides
 
-## Stability Remediation — Waves 0–2 (2026-04-24)
+## Stability Remediation — Waves 0–3 (2026-04-24)
 
-Three waves landed in one branch: real authentication + full route gating +
-request validation (Wave 0); identity bridge + bootstrap hardening + client
-bearer flow + lint unblocked (Wave 1); vuln burn-down + DB pool hardening +
-real CI gates (Wave 2). Server: 103 tests (was 0). Client: 147 tests
-(was 140). Both workspace lints clean. Vulns: 25 high/critical → 0 (4 dev-only
-moderates remain).
+Four waves: real authentication + route gating + request validation (Wave 0);
+identity bridge + bootstrap hardening + client bearer + lint unblocked
+(Wave 1); vuln burn-down + DB pool + real CI gates (Wave 2); shared zod
+contract + a11y fixes + auth-key unification + E2E auth + waitlist hardening
+(Wave 3). Server: 109 tests (was 0). Client: 155 tests (was 140). Both
+workspace lints clean. Vulns: 25 high/critical → 0.
 
 ### Resolved
 - ~~🔴 Trust-the-payload JWT verification~~ — `apps/server/src/middleware/auth.ts`
@@ -188,16 +188,27 @@ moderates remain).
   through historically).
 - ~~🔴 R3: Unauthenticated admin endpoint~~ — `/waitlist/stats` gated with
   `[verifyJWT, requireRoles('admin')]`.
+- ~~🟡 Schema drift between client/server~~ — Wave 3 added `packages/shared`
+  workspace; both sides import Zod schemas + entity types from one source.
+  Surfaced 3 real drift bugs (bulk-update payload mismatch, assignee shape
+  confusion, bulk-fields-allow-null mismatch) — all fixed.
+- ~~🟡 Auth storage key drift~~ — AuthContext now writes auth_token + auth_user
+  + auth_token_meta. Migration on mount splits any legacy `madlab_auth` blob.
+- ~~🟡 6 jsx-a11y violations~~ — fixed; rules restored to `error`.
+- ~~🟡 E2E suite 401'd every API call~~ — Playwright global-setup now seeds
+  `localStorage.auth_token=dev-token-mock-user`; webServer config spins up
+  both Fastify API and Vite client with `NODE_ENV=development`.
+- ~~🟡 `/waitlist/count` was O(N) per hit~~ — aggregate `count(*)` + 60s
+  in-memory TTL cache. Endpoint is intentionally public (social proof).
 
 ### Outstanding
 - **🟢 User must enable branch protection** — required check names are
   documented in task #23. CI gates exist; they just need to be required.
-- **🟡 Auth storage key drift** — `AuthContext` stores under `madlab_auth`
-  (JSON blob), but `api/client.ts` reads from `auth_token`/`auth_user`. Until
-  unified, bearer header is empty for existing users. Task #21.
-- **🟡 6 jsx-a11y violations** surfaced once lint started working; rules
-  downgraded to warnings to keep CI green. Task #20.
 - **🟡 No observability SDK** — stdout logs only. Task #12.
+- **🟡 Domain data still in client `src/data/`** — phases/teamMembers/
+  demoProjects shipped in the SPA bundle. Task #15.
+- **🟡 E2E doesn't run against a real server in CI** — playwright config is
+  ready, but the workflow doesn't yet spin up docker-compose. Task #14.
 - **🟢 4 dev-only moderate vulns remain** — all in `drizzle-kit`'s
   `@esbuild-kit/*` transitive (esbuild). Runtime is clean.
 

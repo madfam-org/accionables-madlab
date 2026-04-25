@@ -41,9 +41,14 @@ export const GanttTaskBar: React.FC<GanttTaskBarProps> = ({
     return levels[difficulty as keyof typeof levels] || '';
   };
 
+  const taskLabel = language === 'es' ? task.name : task.nameEn;
+  const ariaLabel = `${task.id} - ${taskLabel} (${task.assignee}, ${task.hours}h, ${task.progress}%)`;
+
   return (
-    <div
-      className="absolute group cursor-pointer"
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      className="absolute group cursor-pointer appearance-none bg-transparent border-0 p-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
       style={{
         left: x,
         top: y + 10, // Center vertically with some padding
@@ -52,6 +57,8 @@ export const GanttTaskBar: React.FC<GanttTaskBarProps> = ({
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onFocus={() => setIsHovered(true)}
+      onBlur={() => setIsHovered(false)}
     >
       {/* Task Bar */}
       <div
@@ -171,6 +178,6 @@ export const GanttTaskBar: React.FC<GanttTaskBarProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </button>
   );
 };

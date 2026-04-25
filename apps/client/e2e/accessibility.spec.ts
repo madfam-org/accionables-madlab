@@ -84,13 +84,20 @@ test.describe('Accessibility', () => {
     await expect(first).toHaveAttribute('aria-valuemax', /.+/);
   });
 
-  test('body has a non-transparent background color', async ({ page }) => {
-    const body = page.locator('body');
-    const backgroundColor = await body.evaluate(
+  test('dashboard root has a non-transparent background color', async ({ page }) => {
+    // The Tailwind bg color is applied to the dashboard's root <div> in
+    // App.tsx (`bg-gray-50 dark:bg-gray-900`), NOT to <body> — body itself
+    // computes to `rgba(0, 0, 0, 0)`. Read from the actual styled element.
+    // We pick the heading's nearest ancestor with min-h-screen, which is
+    // the dashboard wrapper.
+    const dashboardRoot = page.locator('div.min-h-screen').first();
+    await expect(dashboardRoot).toBeVisible();
+    const backgroundColor = await dashboardRoot.evaluate(
       (el) => window.getComputedStyle(el).backgroundColor,
     );
     expect(backgroundColor).toBeTruthy();
     expect(backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+    expect(backgroundColor).not.toBe('transparent');
   });
 
   test('@smoke html element has a language attribute', async ({ page }) => {

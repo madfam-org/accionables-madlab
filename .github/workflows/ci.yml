@@ -164,13 +164,21 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
       - name: Apply database schema
-        run: npm run db:push --workspace=apps/server
+        # Run from inside apps/server so drizzle-kit's module resolver can
+        # walk up to the hoisted root node_modules where `drizzle-orm` lives.
+        # Running with `npm --workspace=` from the root has the same shell
+        # cwd but a different module-resolution starting point, and drizzle-kit
+        # bails out with "please install required packages: 'drizzle-orm'".
+        working-directory: apps/server
+        run: npm run db:push
       - name: Seed database
-        run: npm run seed --workspace=apps/server
+        working-directory: apps/server
+        run: npm run seed
         continue-on-error: true # legacy task imports may fail-soft; phases/users/projects always succeed
       - name: Start API server in background
+        working-directory: apps/server
         run: |
-          npm run dev --workspace=apps/server > /tmp/server.log 2>&1 &
+          npm run dev > /tmp/server.log 2>&1 &
           echo "$!" > /tmp/server.pid
       - name: Wait for /api/health
         run: |

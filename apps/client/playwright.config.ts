@@ -12,6 +12,13 @@ import { fileURLToPath } from 'node:url';
  * client attaches a valid bearer header to every request. The dev-mock token
  * is only honored by the server when `NODE_ENV === 'development'`, so the
  * `webServer` entries below explicitly set that env var.
+ *
+ * Browser projects (2026-04-24): CI installs only chromium (`--with-deps
+ * chromium`) to keep e2e job runtime under 25 minutes. Locally, devs get the
+ * full chromium/firefox/webkit/Mobile-* matrix to catch cross-browser issues
+ * before they hit a PR. The conditional filter below removes non-chromium
+ * projects when `process.env.CI` is set so we don't have to remember to pass
+ * `--project=chromium` on the command line.
  */
 
 // `apps/client/package.json` is `"type": "module"`, so __dirname is undefined.
@@ -23,6 +30,37 @@ const STORAGE_STATE_PATH = path.resolve(
   __dirname,
   'e2e/.auth/storage-state.json',
 );
+
+const allProjects = [
+  {
+    name: 'chromium',
+    use: { ...devices['Desktop Chrome'] },
+  },
+  {
+    name: 'firefox',
+    use: { ...devices['Desktop Firefox'] },
+  },
+  {
+    name: 'webkit',
+    use: { ...devices['Desktop Safari'] },
+  },
+  /* Test against mobile viewports. */
+  {
+    name: 'Mobile Chrome',
+    use: { ...devices['Pixel 5'] },
+  },
+  {
+    name: 'Mobile Safari',
+    use: { ...devices['iPhone 12'] },
+  },
+];
+
+// CI installs only chromium (see .github/workflows/ci.yml). Filter out the
+// other projects so they don't fail with "browserType.launch" before they
+// even get a chance to run.
+const projects = process.env.CI
+  ? allProjects.filter((p) => p.name === 'chromium')
+  : allProjects;
 
 export default defineConfig({
   testDir: './e2e',
@@ -68,33 +106,9 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
 
-  /* Configure projects for major browsers */
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-
-    /* Test against mobile viewports. */
-    {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 12'] },
-    },
-  ],
+  /* Configure projects for major browsers.
+   * Locally: full matrix. CI: chromium-only (filtered above). */
+  projects,
 
   /* Run the API server and the Vite dev server before starting the tests.
    * The API server MUST run with NODE_ENV=development so that

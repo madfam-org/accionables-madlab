@@ -30,11 +30,11 @@ MADLAB is a live educational event product: 3-hour gamified science-and-tech pre
 
 - postgres (waitlist, event signups)
 - janua (admin auth)
-- phyne-crm (lead webhook)
+- phynd-crm (lead webhook)
 
 ### Downstream consumers (this repo is consumed by)
 
-- phyne-crm (waitlist leads)
+- phynd-crm (waitlist leads)
 - MADFAM events team (scheduling + delivery)
 
 ### Key environment variables
@@ -63,7 +63,7 @@ below is embedded here so this document stands alone.
 | **Cotiza** | `madfam-org/digifab-quoting` | MADFAM's quoting engine (fabrication + services) |
 | **Forgesight** | `madfam-org/forgesight` | Digital fabrication industry intelligence (pricing/vendor feed to Cotiza) |
 | **Pravara MES** | `madfam-org/pravara-mes` | Fabrication-node routing and dispatch (physical jobs) |
-| **PhyneCRM** | `madfam-org/phyne-crm` | Client-facing deliverables portal (single pane of glass per engagement) |
+| **PhyndCRM** | `madfam-org/phynd-crm` | Client-facing deliverables portal (single pane of glass per engagement) |
 | **Fortuna** | `madfam-org/fortuna` | Problem intelligence / zeitgeist analysis |
 | **Avala** | `madfam-org/avala` | Learning verification platform |
 

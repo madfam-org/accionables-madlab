@@ -1,5 +1,13 @@
 # MADLAB Stability Remediation — Full Runbook
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 **Status at write time:** 2026-04-25, end of long autonomous session.
 **Audience:** Next AI agent (or human) picking this up.
 **Premise:** I went deep on this repo for hours. Most code work is done and merged. Production is in a known-broken intermediate state with three concrete blockers that need either platform credentials I don't have or platform UI access I can't drive headless.

@@ -1,5 +1,13 @@
 # Session Handoff — 2026-04-25
 
+> [!IMPORTANT]
+> MADFAM-ENCLII-FIRST-LEGACY-RAW v1: This document contains legacy raw infrastructure command examples.
+> Routine production operations must use Enclii web, API, or CLI. Treat raw
+> `kubectl`, `helm`, SSH, provider CLI/API, `docker exec`, and direct container
+> access as platform bootstrap or documented break-glass only, and record any
+> missing Enclii adapter gap.
+
+
 This document captures the state at the end of the long stability-remediation session. Restart Claude Code, point it at this file, and pick up the open threads.
 
 ## TL;DR

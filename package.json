@@ -8,19 +8,19 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=apps/client",
-    "dev:server": "npm run dev --workspace=apps/server",
-    "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
+    "dev": "node scripts/require-local-services.mjs && npm run dev --workspace=apps/client",
+    "dev:server": "node scripts/require-local-services.mjs && npm run dev --workspace=apps/server",
+    "dev:all": "node scripts/require-local-services.mjs && concurrently \"npm run dev:server\" \"npm run dev\"",
     "build": "npm run build --workspaces",
     "build:client": "npm run build --workspace=apps/client",
     "build:server": "npm run build --workspace=apps/server",
     "test": "npm run test --workspaces",
     "test:e2e": "npm run test:e2e --workspace=apps/client",
     "lint": "npm run lint --workspaces",
-    "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down",
+    "docker:up": "node scripts/require-local-services.mjs && docker compose up -d",
+    "docker:down": "node scripts/require-local-destructive.mjs && docker compose down",
     "docker:logs": "docker compose logs -f",
-    "docker:rebuild": "docker compose up -d --build"
+    "docker:rebuild": "node scripts/require-local-services.mjs && docker compose up -d --build"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

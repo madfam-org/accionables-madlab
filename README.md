@@ -1,5 +1,11 @@
 # 🚀 MADLAB - Laboratorio de Ciencia y Tecnología Gamificada
 
+> [!IMPORTANT]
+> This repo handles education-adjacent school, student, waitlist, scheduling,
+> and team delivery context. Keep examples placeholder-only; do not commit or
+> paste child/school-identifying details, live CRM payloads, database URLs, API
+> keys, Janua secrets, GitHub tokens, or production credentials.
+
 ## 📋 Descripción del Proyecto
 
 MADLAB es un evento educativo en vivo diseñado para escuelas primarias que buscan que sus estudiantes aprendan sobre ciencia y tecnología de manera atractiva y gamificada. El proyecto aborda temas relevantes alineados con los Objetivos de Desarrollo Sostenible (ODS) globales y los estándares nacionales mexicanos de competencia.

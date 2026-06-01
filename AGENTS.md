@@ -28,6 +28,19 @@ redirect and should not become the source of truth again.
   emergencies when Enclii is unavailable or lacks an implemented adapter.
 - Record any missing Enclii adapter gap instead of normalizing raw production
   access in docs or runbooks.
+- Treat school, student, parent/contact, waitlist, CRM webhook, team
+  scheduling, event-delivery, AI drafting/breakdown, and analytics data as
+  sensitive education-adjacent data. Do not expose sample records, contact
+  details, or child/school-identifying details in commits, logs, PRs, chat,
+  issues, or MCP memory.
+- Treat database migrations/pushes/seeds, docker-compose lifecycle, CRM webhook
+  delivery, AI provider calls, Janua auth changes, and GitOps deployment or
+  promotion workflows as side-effectful. Require an explicit operator request
+  and repo-local guard envs before running mutating local commands.
+- Keep examples placeholder-only: Janua URLs/secrets, database URLs/passwords,
+  CRM webhook URLs/secrets, AI provider keys, GitHub tokens, WhatsApp/Drive/
+  Canva/LeanTime references, and production credentials must stay in approved
+  secret stores or local operator environments.
 
 ## Repo entrypoints
 

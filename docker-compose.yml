@@ -9,8 +9,8 @@ services:
     container_name: madlab-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: madlab
-      POSTGRES_PASSWORD: madlab
+      POSTGRES_USER: ${POSTGRES_USER:-madlab_local}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in an untracked local env file}"
       POSTGRES_DB: madlab
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
@@ -39,7 +39,7 @@ services:
       NODE_ENV: development
       PORT: 3001
       HOST: 0.0.0.0
-      DATABASE_URL: postgresql://madlab:madlab@postgres:5432/madlab
+      DATABASE_URL: "${DATABASE_URL:?set DATABASE_URL in an untracked local env file}"
     ports:
       - '3001:3001'
     volumes:

@@ -31,6 +31,10 @@ permissions:
   packages: write
   id-token: write
 
+concurrency:
+  group: accionables-madlab-staging-kustomization-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   detect-changes:
     name: Detect changed services

@@ -7,7 +7,7 @@ name: Enclii build & deploy to staging
 #
 # Production promotion is a SEPARATE workflow (promote-to-prod.yml) that
 # copies the current staging digest into infra/k8s/production/. This
-# matches the canonical pattern used by karafiel / forgesight / autoswarm.
+# matches the canonical pattern used by karafiel / forgesight / selva.
 #
 # Image naming: ghcr.io/madfam-org/accionables-madlab-<svc>:<sha>  (+ digest pin for kustomize)
 

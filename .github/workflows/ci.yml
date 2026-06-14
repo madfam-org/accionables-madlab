@@ -150,6 +150,9 @@ jobs:
       # no per-run image build cost. GHA manages the healthcheck for us.
       postgres:
         image: postgres:16-alpine
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_USER: madlab
           POSTGRES_PASSWORD: madlab

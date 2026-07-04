@@ -2,6 +2,7 @@
   "name": "madlab-monorepo",
   "version": "2.0.0",
   "private": true,
+  "license": "MIT",
   "description": "MADLAB - Educational Project Management Platform (Monorepo)",
   "workspaces": [
     "apps/*",

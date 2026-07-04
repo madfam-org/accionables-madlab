@@ -217,3 +217,11 @@ Este documento y todos los materiales relacionados son propiedad conjunta de MAD
 ## 🎉 ¡Hagamos que la ciencia sea divertida!
 
 > "La mejor manera de predecir el futuro es creándolo" - *Equipo MADLAB*
+
+## License
+
+This project is licensed under the MIT License, matching the existing license
+declaration in `apps/client/package.json`. See [LICENSE](./LICENSE) for the
+full text.
+
+Copyright (c) 2026 Innovaciones MADFAM SAS de C.V.

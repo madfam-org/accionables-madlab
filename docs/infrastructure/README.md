@@ -25,15 +25,15 @@ infrastructure-level orientation; for the deploy-flow walkthrough see
   client and server import from this single source of truth.
 
 ### Data
-- Postgres 16, shared `data/postgres` namespace (platform-managed —
-  not in-namespace)
+- Postgres 16, platform-managed shared instance (not in the app's
+  namespace)
 
 ## Where things run
 
 | Component | Where |
 |---|---|
-| API + Client images | `madlab` namespace, K8s |
-| Postgres | `data/postgres` namespace, K8s, shared platform DB |
+| API + Client images | app namespace, K8s |
+| Postgres | shared platform DB, K8s |
 | TLS / public ingress | Cloudflare tunnel → enclii ingress |
 | Auth | Janua at `auth.madfam.io` (RS256 JWKS) |
 | Image registry | MADFAM internal registry (signed) |
@@ -73,8 +73,11 @@ npm run dev:all
 - `infra/k8s/production/{server,client}-deployment.yaml` — pod specs
 - `infra/k8s/production/{server,client}-service.yaml` — services
 - `infra/k8s/production/network-policies.yaml` — namespace network rules
-- `infra/k8s/production/secrets-template.yaml` — shape of the secret
-  enclii materializes (real values come from the platform vault)
+
+The K8s secret the deployments reference is materialized by enclii from the
+platform vault; the required-variable list is enforced in code at
+`apps/server/src/config/env.ts`, and provisioning is documented in MADFAM
+internal docs.
 
 ## Production environment
 

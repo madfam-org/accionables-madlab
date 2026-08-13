@@ -661,7 +661,7 @@ jobs:
           
   # Deployment is handled by enclii (see .github/workflows/enclii-build.yml).
   # On push to main: image build + sign → registry → auto-commit digest →
-  # ArgoCD reconciles the madlab namespace. No CI-side deploy step needed.
+  # ArgoCD reconciles the app namespace. No CI-side deploy step needed.
 ```
 
 ---

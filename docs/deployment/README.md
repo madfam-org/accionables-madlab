@@ -18,7 +18,7 @@ GitHub Actions / enclii-build    → docker image build + sign + push to madfam 
 ArgoCD watches infra/k8s/production/
         │
         ▼
-K8s rollout in the madlab namespace
+K8s rollout in the app's namespace
 ```
 
 There is **no CI-side `deploy` step** to a third-party platform. Image build
@@ -31,7 +31,7 @@ fail-closed behavior added in stability Wave 1):
 
 | Var | Purpose |
 |---|---|
-| `DATABASE_URL` | Postgres connection (shared `data/postgres` namespace) |
+| `DATABASE_URL` | Postgres connection (platform-managed shared Postgres) |
 | `JANUA_ISSUER` | OIDC issuer URL for Janua |
 | `JANUA_AUDIENCE` | Token audience the API expects |
 | `JANUA_JWKS_URI` | Public key set for RS256 verification |
@@ -42,8 +42,9 @@ Optional (silent no-op when unset):
 - `SENTRY_DSN` — enables server-side error tracking
 - `VITE_SENTRY_DSN` — enables client-side error tracking (build-time)
 
-These are managed via the K8s secret materialized by enclii — see
-`infra/k8s/production/secrets-template.yaml` for the shape.
+These are managed via the K8s secret materialized by enclii. The full
+required-variable list is enforced in code at `apps/server/src/config/env.ts`;
+secret provisioning itself is documented in MADFAM internal docs.
 
 ## Local production-mode build
 
@@ -73,9 +74,9 @@ If `DATABASE_URL` includes `sslmode=require` (or `prefer`/`verify-ca`/
 
 | Component | Where | Image |
 |---|---|---|
-| API (Fastify) | `madlab` namespace, K8s | `apps/server/Dockerfile` (built by enclii-build.yml) |
-| Client (React) | `madlab` namespace, K8s, served via nginx | `apps/client/Dockerfile` |
-| Postgres | `data/postgres` namespace, shared | platform-managed |
+| API (Fastify) | app namespace, K8s | `apps/server/Dockerfile` (built by enclii-build.yml) |
+| Client (React) | app namespace, K8s, served via nginx | `apps/client/Dockerfile` |
+| Postgres | shared platform Postgres | platform-managed |
 | TLS / routing | Cloudflare tunnel → enclii ingress | platform-managed |
 | Auth | Janua OIDC | `auth.madfam.io` |
 

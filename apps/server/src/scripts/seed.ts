@@ -256,6 +256,7 @@ export async function runSeed({ db, log = console.log }: SeedDeps): Promise<Seed
       descriptionEn: `${legacyTask.sectionEn} - ${legacyTask.nameEn}`,
       status: normalizeLegacyStatus(legacyTask.manualStatus),
       assigneeId: assigneeId ?? null,
+      estimatedMinutes: Math.round(legacyTask.hours * 60),
       estimatedHours: Math.round(legacyTask.hours),
       difficulty: mapDifficulty(legacyTask.difficulty),
       phase: legacyTask.phase,

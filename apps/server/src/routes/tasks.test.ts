@@ -174,4 +174,53 @@ describe('taskRoutes — integration (verifyJWT → validation → handler)', ()
     expect(res.statusCode).toBe(200);
     expect(res.json().success).toBe(true);
   });
+
+  // ── Canonical time (D14): minutes are storage law ─────────────────────────
+
+  it('POST with hours only backfills minutes ×60 — legacy writers keep working', async () => {
+    let captured: Record<string, unknown> = {};
+    dbStub.insert.mockImplementationOnce(() => ({
+      values: (v: Record<string, unknown>) => {
+        captured = v;
+        return { returning: async () => [{ id: '1' }] };
+      },
+    }));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      headers: { authorization: 'Bearer dev-token-mock-user' },
+      payload: {
+        projectId: '00000000-0000-0000-0000-000000000001',
+        title: 'Legacy hours writer',
+        estimatedHours: 3,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(captured.estimatedMinutes).toBe(180);
+    expect(captured.estimatedHours).toBe(3);
+  });
+
+  it('PATCH with minutes wins over hours and keeps the compat column in sync', async () => {
+    let captured: Record<string, unknown> = {};
+    dbStub.update.mockImplementationOnce(() => ({
+      set: (v: Record<string, unknown>) => {
+        captured = v;
+        return { where: () => ({ returning: async () => [{ id: '1' }] }) };
+      },
+    }));
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/tasks/00000000-0000-0000-0000-000000000001',
+      headers: { authorization: 'Bearer dev-token-mock-user' },
+      payload: { estimatedMinutes: 100, estimatedHours: 9, actualMinutes: 45 },
+    });
+    expect(res.statusCode).toBe(200);
+    // The finer unit cannot be rebuilt from the coarser one: minutes win.
+    expect(captured.estimatedMinutes).toBe(100);
+    expect(captured.estimatedHours).toBe(2); // round(100/60)
+    expect(captured.actualMinutes).toBe(45);
+    expect(captured.actualHours).toBe(1); // round(45/60)
+  });
 });

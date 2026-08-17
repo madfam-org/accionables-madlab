@@ -7,15 +7,19 @@ import {
 import { verifyJWT } from '../middleware/auth.js';
 
 /**
- * AI Provider Configuration
+ * AI Provider Configuration — Selva only.
  *
- * Supports multiple open-source model providers:
- * - Ollama (local inference)
- * - Groq (hosted API for Llama/Mixtral)
- * - Together.ai (hosted API)
- * - Custom OpenAI-compatible endpoints
+ * STANDING PROHIBITION 2 (SEPARATION_OF_CONCERNS §5): no direct LLM provider
+ * calls; everything routes through Selva's OpenAI-compatible /v1. Until
+ * 2026-08-16 this file wired Ollama/Groq/Together directly — a per-repo
+ * provider fan-out with per-repo keys is exactly the sprawl the chokepoint
+ * exists to prevent (billing, model policy, and audit all live in Selva).
+ *
+ * 'mock' remains the default so local development needs no key and CI stays
+ * hermetic; anything non-mock is Selva or a refusal — there is deliberately
+ * no third branch.
  */
-type AIProvider = 'ollama' | 'groq' | 'together' | 'custom' | 'mock';
+type AIProvider = 'selva' | 'mock';
 
 interface AIConfig {
   provider: AIProvider;
@@ -27,37 +31,22 @@ interface AIConfig {
 function getAIConfig(): AIConfig {
   const provider = (process.env.AI_PROVIDER || 'mock') as AIProvider;
 
-  switch (provider) {
-    case 'ollama':
-      return {
-        provider: 'ollama',
-        baseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
-        model: process.env.OLLAMA_MODEL || 'llama3.2',
-      };
-    case 'groq':
-      return {
-        provider: 'groq',
-        baseUrl: 'https://api.groq.com/openai/v1',
-        apiKey: process.env.GROQ_API_KEY,
-        model: process.env.GROQ_MODEL || 'llama-3.1-70b-versatile',
-      };
-    case 'together':
-      return {
-        provider: 'together',
-        baseUrl: 'https://api.together.xyz/v1',
-        apiKey: process.env.TOGETHER_API_KEY,
-        model: process.env.TOGETHER_MODEL || 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo',
-      };
-    case 'custom':
-      return {
-        provider: 'custom',
-        baseUrl: process.env.AI_BASE_URL,
-        apiKey: process.env.AI_API_KEY,
-        model: process.env.AI_MODEL || 'gpt-3.5-turbo',
-      };
-    default:
-      return { provider: 'mock', model: 'mock' };
+  if (provider === 'selva') {
+    const baseUrl = process.env.SELVA_BASE_URL || 'https://inference.selva.town/v1';
+    const apiKey = process.env.SELVA_API_KEY;
+    if (!apiKey) {
+      // Fail closed and loud: a Selva selection without a key must never
+      // silently fall back to mock output that reads as model output.
+      throw new Error('AI_PROVIDER=selva requires SELVA_API_KEY');
+    }
+    return {
+      provider: 'selva',
+      baseUrl,
+      apiKey,
+      model: process.env.SELVA_MODEL || 'selva-default',
+    };
   }
+  return { provider: 'mock', model: 'mock' };
 }
 
 /**
@@ -82,29 +71,18 @@ async function callAI(
     headers['Authorization'] = `Bearer ${config.apiKey}`;
   }
 
-  const endpoint = config.provider === 'ollama'
-    ? `${config.baseUrl}/api/chat`
-    : `${config.baseUrl}/chat/completions`;
+  // Selva is OpenAI-compatible; one endpoint shape, no per-provider forks.
+  const endpoint = `${config.baseUrl}/chat/completions`;
 
-  const body = config.provider === 'ollama'
-    ? {
-      model: config.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      stream: false,
-      options: { num_predict: maxTokens },
-    }
-    : {
-      model: config.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      max_tokens: maxTokens,
-      temperature: 0.7,
-    };
+  const body = {
+    model: config.model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    max_tokens: maxTokens,
+    temperature: 0.7,
+  };
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -127,16 +105,6 @@ async function callAI(
   }
 
   const data = await response.json() as AIResponse;
-
-  if (config.provider === 'ollama') {
-    return {
-      content: data.message?.content || '',
-      usage: data.eval_count ? {
-        promptTokens: data.prompt_eval_count || 0,
-        completionTokens: data.eval_count || 0,
-      } : undefined,
-    };
-  }
 
   return {
     content: data.choices?.[0]?.message?.content || '',
@@ -441,15 +409,12 @@ Please draft an appropriate message. Respond with valid JSON only.`;
         provider: config.provider,
         model: config.model,
         baseUrl: config.provider !== 'mock' ? config.baseUrl : undefined,
-        supportedProviders: ['ollama', 'groq', 'together', 'custom'],
+        supportedProviders: ['selva'],
         envVars: {
-          AI_PROVIDER: 'ollama | groq | together | custom',
-          OLLAMA_BASE_URL: 'http://localhost:11434 (default)',
-          OLLAMA_MODEL: 'llama3.2 (default)',
-          GROQ_API_KEY: 'your-groq-api-key',
-          GROQ_MODEL: 'llama-3.1-70b-versatile (default)',
-          TOGETHER_API_KEY: 'your-together-api-key',
-          TOGETHER_MODEL: 'meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo (default)',
+          AI_PROVIDER: 'selva | mock',
+          SELVA_BASE_URL: 'https://inference.selva.town/v1 (default)',
+          SELVA_API_KEY: 'required when AI_PROVIDER=selva',
+          SELVA_MODEL: 'selva-default (default)',
         },
       },
     });

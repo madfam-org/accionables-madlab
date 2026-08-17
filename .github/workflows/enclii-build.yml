@@ -198,6 +198,18 @@ jobs:
           fi
           git add infra/k8s/overlays/staging/kustomization.yaml
           git commit -m "deploy(staging): pin image digests from ${{ github.sha }}"
+          # Rebase-retry, never bare push: main moves while images build (a
+          # merge, a promote commit, a sibling matrix job), and a bare push
+          # then dies on non-fast-forward — which is exactly how the first
+          # two revival deploys failed (2026-08-17). The digest edit is ours
+          # alone, so replaying it on the moved tip is always clean.
+          for attempt in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt); rebasing onto moved main"
+            git pull --rebase origin main
+          done
           git push
 
       - name: Notify enclii lifecycle

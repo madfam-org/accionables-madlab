@@ -17,11 +17,17 @@ already exist and updating the mission to match**.
 
 ## Findings (severity-ordered)
 
-1. **The client never talks to its own server.** `appStore` imports from
-   bundled `data/` files (demoProjects, phases, teamMembers); only
-   `AuthContext` fetches. The full CRUD API (each route tested) serves
-   nobody. The platform's flagship gap — same class as nauta's "model with no
-   door".
+1. **CORRECTED (same day, deeper read + live-cluster check):** the client
+   IS fully wired (React Query hooks with optimistic mutations over an
+   `api/` layer; `App.tsx` renders `useTasks()`), the server IS deployed
+   (k8s manifests, nginx `/api` proxy, both pods Running). The REAL top
+   finding: **production is 113 days stale** (server pod: 27 restarts,
+   image from ~April) — the Aug-13 red pipeline is only the visible tip of
+   a promotion chain that has not delivered since spring. Every fix in this
+   audit reaches nobody until the deploy chain revives (finding 3). The
+   original text of this finding claimed the halves were never joined; that
+   was wrong, and the correction is recorded rather than rewritten away
+   (prohibition 4 applies to audits too).
 2. **Standing prohibition 2 violated** — `agents.ts` called Ollama/Groq/
    Together directly. **Fixed in #37** (Selva-only, fail-closed, truthful
    /info and .env.example).
@@ -40,9 +46,10 @@ already exist and updating the mission to match**.
 6. **No time ledger.** `actualHours` is a mutable aggregate — no entries, no
    attribution, no audit trail. The nauta bridge should NOT duplicate
    nauta's `TimeEntry`; see integration contract below for who owns what.
-7. **The server is not declared in `enclii.yaml`** (client only) — whatever
-   runs in prod, the platform API has no declared deploy surface
-   (prohibition 7 exposure the moment the client wires to it).
+7. **The server is not declared in `enclii.yaml`'s service list** (client
+   only) — the k8s manifests deploy it fine, but enclii tooling
+   (`enclii logs`, service registry) cannot see it. Declaration gap, not a
+   deploy gap (corrected alongside finding 1).
 8. **Lint debt:** 68 eslint warnings (0 errors) server-side.
 9. **Mission docs stale** (`ECOSYSTEM.md` type/status/services) — update
    as capabilities land, never ahead of them (prohibition 4).
@@ -73,7 +80,7 @@ is data, not merged ownership:
 | Wave | Items | Exit |
 |---|---|---|
 | **A — Truth & plumbing** (now) | #37 Selva routing ✅ · ENCLII_DEPLOY_TOKEN (operator) · server declared in enclii.yaml + prod deploy · lint debt to zero | Staging green; API reachable in prod |
-| **B — Join the halves** | Client reads/writes its own API (React Query over the tested routes; demo data becomes seed, offline mode becomes cache) · minutes migration + Gantt on minutes | The Gantt renders server truth |
+| **B — Freshness & minutes** | ~~Join the halves~~ (already joined — see corrected finding 1) · minutes migration (#39) + Gantt on minutes · server declared in enclii.yaml · deploy-chain revival (token + staging + promote) so 113-day-stale prod receives everything since spring | Prod pods run current images; the Gantt schedules in minutes |
 | **C — Platform spine** | `workspaceId` tenancy + scoped queries · `packages/scheduling` extraction with critical-path tests | Two workspaces coexist without seeing each other |
 | **D — nauta bridge** | external_refs link · service-scoped rollup API · nauta plan-vs-actual consumes it | An initiative on crea's roadmap shows planned-vs-consumed from both systems |
 | **E — Mission match** | ECOSYSTEM.md re-typed (platform), docs INDEX updated, deployed-services table truthful | Docs equal reality |

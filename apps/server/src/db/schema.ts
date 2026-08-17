@@ -106,7 +106,11 @@ export const tasks = pgTable('tasks', {
   status: taskStatusEnum('status').default('not-started').notNull(),
   assigneeId: uuid('assignee_id').references(() => users.id),
 
-  // Work estimation
+  // Work estimation. MINUTES ARE CANONICAL (ecosystem doctrine D14, nauta
+  // docs/DECISIONS_LOG.md): stored time is exact integer minutes; hours are
+  // a derived compat view kept in sync on write. New readers use minutes;
+  // the hour columns are deprecated and survive only for legacy consumers.
+  estimatedMinutes: integer('estimated_minutes'),
   estimatedHours: integer('estimated_hours'),
   difficulty: taskDifficultyEnum('difficulty'),
 
@@ -117,6 +121,7 @@ export const tasks = pgTable('tasks', {
 
   // Progress tracking
   progress: integer('progress').default(0), // 0-100
+  actualMinutes: integer('actual_minutes'),
   actualHours: integer('actual_hours'),
 
   // Dates

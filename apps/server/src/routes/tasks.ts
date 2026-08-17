@@ -12,6 +12,37 @@ import {
   validateRequest,
 } from '../schemas/validation.js';
 
+/**
+ * Canonical time (doctrine D14): minutes are storage law; hours are a compat
+ * view kept in sync on every write. When a caller supplies both, minutes win
+ * — the finer unit cannot be reconstructed from the coarser one. Hours-only
+ * writers (legacy clients, the AI breakdown contract) keep working: their
+ * value converts once, on the way in.
+ */
+function canonicalTime(input: {
+  estimatedMinutes?: number;
+  estimatedHours?: number;
+  actualMinutes?: number;
+  actualHours?: number;
+}): { estimatedMinutes?: number; estimatedHours?: number; actualMinutes?: number; actualHours?: number } {
+  const out: { estimatedMinutes?: number; estimatedHours?: number; actualMinutes?: number; actualHours?: number } = {};
+  if (input.estimatedMinutes !== undefined) {
+    out.estimatedMinutes = input.estimatedMinutes;
+    out.estimatedHours = Math.round(input.estimatedMinutes / 60);
+  } else if (input.estimatedHours !== undefined) {
+    out.estimatedHours = input.estimatedHours;
+    out.estimatedMinutes = Math.round(input.estimatedHours * 60);
+  }
+  if (input.actualMinutes !== undefined) {
+    out.actualMinutes = input.actualMinutes;
+    out.actualHours = Math.round(input.actualMinutes / 60);
+  } else if (input.actualHours !== undefined) {
+    out.actualHours = input.actualHours;
+    out.actualMinutes = Math.round(input.actualHours * 60);
+  }
+  return out;
+}
+
 export async function taskRoutes(fastify: FastifyInstance) {
   /**
    * GET /api/tasks
@@ -161,7 +192,7 @@ export async function taskRoutes(fastify: FastifyInstance) {
           descriptionEn: input.descriptionEn,
           assigneeId: input.assigneeId,
           status: input.status,
-          estimatedHours: input.estimatedHours,
+          ...canonicalTime(input),
           difficulty: input.difficulty,
           phase: input.phase,
           section: input.section,
@@ -259,8 +290,7 @@ export async function taskRoutes(fastify: FastifyInstance) {
       if (input.descriptionEn !== undefined) updates.descriptionEn = input.descriptionEn;
       if (input.status !== undefined) updates.status = input.status;
       if (input.assigneeId !== undefined) updates.assigneeId = input.assigneeId;
-      if (input.estimatedHours !== undefined) updates.estimatedHours = input.estimatedHours;
-      if (input.actualHours !== undefined) updates.actualHours = input.actualHours;
+      Object.assign(updates, canonicalTime(input));
       if (input.difficulty !== undefined) updates.difficulty = input.difficulty;
       if (input.phase !== undefined) updates.phase = input.phase;
       if (input.progress !== undefined) updates.progress = input.progress;

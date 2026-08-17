@@ -56,6 +56,9 @@ export const createTaskSchema = z.object({
   descriptionEn: z.string().max(2000).optional(),
   assigneeId: z.string().uuid().optional(),
   status: taskStatusSchema.default('not-started'),
+  // Minutes are canonical (D14); hours accepted for legacy writers and
+  // converted server-side. Both optional; when both arrive, minutes win.
+  estimatedMinutes: z.number().int().min(0).max(60000).optional(),
   estimatedHours: z.number().min(0).max(1000).optional(),
   difficulty: taskDifficultySchema.optional(),
   phase: z.number().int().min(1).max(10).default(1),
@@ -74,7 +77,9 @@ export const updateTaskSchema = z.object({
   descriptionEn: z.string().max(2000).optional(),
   status: taskStatusSchema.optional(),
   assigneeId: z.string().uuid().nullable().optional(),
+  estimatedMinutes: z.number().int().min(0).max(60000).optional(),
   estimatedHours: z.number().min(0).max(1000).optional(),
+  actualMinutes: z.number().int().min(0).max(60000).optional(),
   actualHours: z.number().min(0).max(1000).optional(),
   difficulty: taskDifficultySchema.optional(),
   phase: z.number().int().min(1).max(10).optional(),

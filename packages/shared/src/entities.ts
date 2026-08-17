@@ -61,12 +61,18 @@ export interface ApiTask {
   descriptionEn?: string | null;
   status: TaskStatus;
   assigneeId?: string | null;
+  /** Canonical work estimate (D14: minutes are storage law). */
+  estimatedMinutes?: number | null;
+  /** @deprecated derived compat view; prefer estimatedMinutes. */
   estimatedHours?: number | null;
   difficulty?: TaskDifficulty | null;
   phase?: number | null;
   section?: string | null;
   sectionEn?: string | null;
   progress: number;
+  /** Canonical recorded work (D14). */
+  actualMinutes?: number | null;
+  /** @deprecated derived compat view; prefer actualMinutes. */
   actualHours?: number | null;
   startDate?: string | null;
   endDate?: string | null;

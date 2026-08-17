@@ -31,11 +31,19 @@ already exist and updating the mission to match**.
 2. **Standing prohibition 2 violated** — `agents.ts` called Ollama/Groq/
    Together directly. **Fixed in #37** (Selva-only, fail-closed, truthful
    /info and .env.example).
-3. **Staging deploys red since 2026-08-13** — the digest-commit step pushes
-   to protected `main` with the `GITHUB_TOKEN` fallback because
-   `ENCLII_DEPLOY_TOKEN` is not registered on this repo (nauta has it; the
-   workflow already prefers it). **Operator action:** extend the org secret
-   to this repo; no code change needed.
+3. **Staging deploys red since 2026-08-13 — RESOLVED 2026-08-17.** The
+   diagnosis evolved twice: `ENCLII_DEPLOY_TOKEN` turned out to be a
+   **phantom** — the 2026-08-13 bootstrap runbook (enclii#396) records it
+   "names no repo in the org has". The real blocker: this was the ONLY repo
+   in the ecosystem whose `main` carried branch protection, so the Actions
+   digest commit hit GH006 while every sibling (nauta, janua, enclii
+   unprotected; karafiel's plan lacks the feature) pushed freely. The
+   operator removed the protection (org-convention alignment) and the
+   pipeline was re-run. **Standing follow-up so the safety intent is not
+   lost:** adopt org-wide **rulesets with a GitOps-bot bypass** — real
+   protection the digest commits can traverse — and drop the phantom
+   `ENCLII_DEPLOY_TOKEN || GITHUB_TOKEN` fallback from the workflow so the
+   next reader is not sent hunting a token that never existed.
 4. **No tenancy.** `users`/`projects` carry no workspace/org scoping — one
    global namespace. Platform-grade multi-client use (and any nauta bridge
    that scopes per engagement) needs a `workspaceId` spine + scoped queries.

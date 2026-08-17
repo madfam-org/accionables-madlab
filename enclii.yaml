@@ -18,6 +18,12 @@ spec:
       - name: madlab-client
         port: 80
         ingress: [cloudflare-tunnel]
+      # The API was deployed (infra/k8s/production/server-*.yaml, nginx /api
+      # proxy) but never declared here, so enclii tooling could not see it
+      # (platform audit 2026-08-16, finding 7). Internal-only: reached via
+      # the client's nginx proxy, no direct ingress.
+      - name: madlab-server
+        port: 80
         egress: [dns, https]
       - name: madlab-server
         port: 3001

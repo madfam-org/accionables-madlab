@@ -84,7 +84,12 @@ export function mapApiTaskToFrontend(apiTask: ApiTask): Task {
     name: apiTask.title,
     nameEn: apiTask.titleEn || apiTask.title,
     assignee: apiTask.assignee || apiTask.assigneeDetails?.name || 'Unassigned',
-    hours: apiTask.estimatedHours || 0,
+    // Minutes are canonical (D14): prefer the exact unit and derive
+    // fractional hours from it — 100 minutes is 1.67h, not a rounded 2.
+    hours:
+      apiTask.estimatedMinutes != null
+        ? apiTask.estimatedMinutes / 60
+        : apiTask.estimatedHours || 0,
     section: apiTask.metadata?.section || apiTask.section || '',
     sectionEn: apiTask.metadata?.sectionEn || apiTask.sectionEn || '',
     phase: apiTask.phase || 1,
@@ -115,7 +120,9 @@ export function mapFrontendTaskToApiUpdate(task: Partial<Task>): Record<string, 
   }
 
   if (task.hours !== undefined) {
-    payload.estimatedHours = task.hours;
+    // Write the canonical unit; the server keeps the hour compat column in
+    // sync (canonicalTime). Rounding here is to a whole minute, never an hour.
+    payload.estimatedMinutes = Math.round(task.hours * 60);
   }
 
   if (task.difficulty !== undefined) {

@@ -21,7 +21,8 @@
     "docker:up": "node scripts/require-local-services.mjs && docker compose up -d",
     "docker:down": "node scripts/require-local-destructive.mjs && docker compose down",
     "docker:logs": "docker compose logs -f",
-    "docker:rebuild": "node scripts/require-local-services.mjs && docker compose up -d --build"
+    "docker:rebuild": "node scripts/require-local-services.mjs && docker compose up -d --build",
+    "postinstall": "[ -d packages/shared/src ] && npm run build --workspace=packages/shared || true"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

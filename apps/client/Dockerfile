@@ -9,6 +9,8 @@ RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json ./
 COPY apps/client/package.json ./apps/client/
 COPY apps/server/package.json ./apps/server/
+# Same workspace rule as the server image: @madlab/shared must enter npm ci.
+COPY packages/shared/package.json ./packages/shared/
 RUN npm ci --workspaces --include-workspace-root
 
 FROM node:20-alpine AS build
@@ -16,7 +18,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/client/node_modules ./apps/client/node_modules
 COPY . .
-RUN npm run build --workspace=apps/client
+# Shared first: its exports point at dist/, and Vite resolves the built ESM.
+RUN npm run build --workspace=packages/shared && npm run build --workspace=apps/client
 
 FROM nginx:alpine AS production
 COPY apps/client/nginx.conf /etc/nginx/nginx.conf

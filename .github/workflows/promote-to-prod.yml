@@ -41,7 +41,10 @@ jobs:
         run: |
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
-          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          # curl, never wget: the ARC runner image has no wget (the first
+          # promote attempt ever, 2026-08-17, died here) — same minimalism
+          # that broke cosign-installer/envsubst elsewhere in the org.
+          sudo curl -sL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
       - name: Read staging digests

@@ -11,8 +11,14 @@ import { getSmartTaskProgress } from './progressHelpers';
 /**
  * Calculate task duration based on hours and complexity
  */
+/** One workday of scheduling capacity. 8h = 480 canonical minutes (D14). */
+const WORK_HOURS_PER_DAY = 8;
+
 export const calculateTaskDuration = (task: Task): number => {
-  const baseDays = Math.ceil(task.hours / 8);
+  // task.hours arrives as FRACTIONAL hours derived from canonical minutes
+  // (D14; see api/mappers.ts) — a 100-minute task is 1.67h and schedules
+  // inside a single workday instead of inflating to a rounded 2h.
+  const baseDays = Math.ceil(task.hours / WORK_HOURS_PER_DAY);
   const complexityMultiplier = {
     1: 1.0,    // Easy
     2: 1.2,    // Medium

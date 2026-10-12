@@ -47,7 +47,7 @@ patches:
 # The values below are placeholders that match production at branch
 # creation; they get overwritten on first staging deploy.
 images:
-- digest: sha256:290eb41878df67dd4d4354c0a369dbf7ec46c900f2d8664094a33f20ad4e725b
+- digest: sha256:ad10e4c2067a90228c069336f99955a1ed9ca4a256a63f2467aa8e8d364d04bc
   name: ghcr.io/madfam-org/accionables-madlab-client
   newName: ghcr.io/madfam-org/accionables-madlab-client
 - digest: sha256:fc8d92d83386f3392b0b7efb96dece01de594ace9ad88c6d62f0d7108163f8c2

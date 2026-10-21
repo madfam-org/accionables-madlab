@@ -1,0 +1,26 @@
+# GitHub Pages (legacy Jekyll build from `main` /) — publishes README.md and
+# the Markdown docs in docs/ as a documentation site. The application itself
+# is NOT served from here; it ships through Enclii (see enclii.yaml, infra/).
+#
+# Liquid rule: GitHub Pages runs every Markdown file through Liquid, so JSX
+# like `style={{ width: x }}` breaks the build (or silently renders as empty).
+# Wrap any code fence that contains `{{` or `{%` in {% raw %} … {% endraw %}
+# lines, as in docs/guides/ACCESSIBILITY.md. The "Docs — GitHub Pages build"
+# job in .github/workflows/ci.yml runs the same builder on every PR.
+theme: jekyll-theme-primer
+
+# Jekyll 3 replaces (does not merge) its default exclude list, so the
+# defaults (Gemfile*, node_modules, vendor) are repeated here.
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor
+  - apps
+  - packages
+  - infra
+  - scripts
+  - package.json
+  - package-lock.json
+  - docker-compose.yml
+  - enclii.yaml

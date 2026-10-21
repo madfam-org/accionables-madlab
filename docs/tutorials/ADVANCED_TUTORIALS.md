@@ -199,6 +199,7 @@ addTaskTag: (taskId, tagId) => set((state) => ({
 
 #### Step 4: Create Tag Management Component
 
+{% raw %}
 ```tsx
 // src/components/TagManager.tsx
 import { useState } from 'react';
@@ -268,6 +269,7 @@ export const TagManager: React.FC = () => {
   );
 };
 ```
+{% endraw %}
 
 **Key Learnings**:
 - Extend types first
@@ -529,6 +531,7 @@ export const calculateResourceUtilization = (
 
 #### Step 2: Create Visualization Component
 
+{% raw %}
 ```tsx
 // src/components/GanttChart/ResourceUtilizationView.tsx
 import { useMemo } from 'react';
@@ -580,6 +583,7 @@ export const ResourceUtilizationView: React.FC = () => {
   );
 };
 ```
+{% endraw %}
 
 **Key Learnings**:
 - Use memoization for expensive calculations
@@ -758,6 +762,7 @@ function App() {
 npm install react-virtual
 ```
 
+{% raw %}
 ```tsx
 // src/components/VirtualizedTaskList.tsx
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -815,6 +820,7 @@ export const VirtualizedTaskList: React.FC<VirtualizedTaskListProps> = ({
   );
 };
 ```
+{% endraw %}
 
 #### Step 2: Memoize Expensive Calculations
 

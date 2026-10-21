@@ -510,6 +510,7 @@ const handleTouchEnd = (e: TouchEvent) => {
 ```
 
 ### Success Animation
+{% raw %}
 ```tsx
 <motion.div
   initial={{ scale: 0 }}
@@ -519,6 +520,7 @@ const handleTouchEnd = (e: TouchEvent) => {
   <CheckCircle className="text-green-500" />
 </motion.div>
 ```
+{% endraw %}
 
 ---
 

@@ -33,6 +33,22 @@ jobs:
           fi
           echo "OK: no TODO-auth markers in source."
 
+  # ─── Docs: the GitHub Pages site builds ──────────────────────────────────
+  # Pages builds main with Jekyll + Liquid, outside this workflow, so a doc
+  # with unescaped JSX `{{ … }}` used to turn main red only after merge
+  # (every Pages build failed from 2025-08 to 2026-10). This runs the same
+  # builder on every PR; it only builds into ./_site and deploys nothing.
+  docs-pages-build:
+    name: Docs — GitHub Pages build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build with Jekyll (same action GitHub Pages uses)
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+
   # ─── apps/server ──────────────────────────────────────────────────────────
   server-lint:
     name: Server Lint

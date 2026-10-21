@@ -322,6 +322,7 @@ export const useUpdateTaskMutation = () => {
 
 ### Component Migration Example
 
+{% raw %}
 ```typescript
 // src/features/tasks/components/TaskCard/TaskCard.tsx
 import { memo } from 'react';
@@ -395,6 +396,7 @@ export const TaskCard = memo<TaskCardProps>(({ task, view, onSelect }) => {
   );
 });
 ```
+{% endraw %}
 
 ---
 

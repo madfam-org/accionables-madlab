@@ -46,6 +46,7 @@ export const PhaseSection: React.FC<PhaseSectionProps> = ({ phase }) => {
 - Minimal internal state
 - Examples: `ProgressBar`, `LoadingSpinner`
 
+{% raw %}
 ```typescript
 // Presentational pattern example
 export const ProgressBar: React.FC<ProgressBarProps> = ({ 
@@ -62,6 +63,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   );
 };
 ```
+{% endraw %}
 
 ### 2. Composition Patterns
 

@@ -383,18 +383,13 @@ services:
 
 ### Deploy to Enclii PaaS
 
-```bash
-# 1. Tag images for Enclii registry
-docker tag madlab-server enclii-registry.io/madlab/server:latest
-docker tag madlab-client enclii-registry.io/madlab/client:latest
-
-# 2. Push to Enclii
-docker push enclii-registry.io/madlab/server:latest
-docker push enclii-registry.io/madlab/client:latest
-
-# 3. Deploy via Enclii CLI (example)
-enclii deploy --app madlab --compose docker-compose.prod.yml
-```
+There is no compose-based Enclii deploy: `enclii deploy` has no `--app` or
+`--compose` flag, and images are not pushed by hand. Deploys go through GitHub
+Actions, not a CLI call: a push to `main` that touches `apps/**` runs `.github/workflows/enclii-build.yml`, which builds the
+`client` and `server` images, pushes them to GHCR, and commits their digests
+to `infra/k8s/overlays/staging/kustomization.yaml` for ArgoCD to reconcile.
+Production promotion is a separate workflow (`promote-to-prod.yml`) that
+copies the staging digest into `infra/k8s/production/`.
 
 ---
 
@@ -582,5 +577,5 @@ networks:
 
 **Built with ❤️ for Educational Innovation**
 
-*Last Updated: November 23, 2024*
+*Last Updated: November 24, 2026*
 *Version: 2.0.0 (Monorepo + Docker)*

@@ -159,7 +159,14 @@ jobs:
   # a real DB + API, the dev-mock token has nothing to authenticate against.
   e2e:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: GitHub moved ubuntu-latest to Ubuntu 26.04 in
+    # 2026-11, and the pinned Playwright (1.56.x, see apps/client/package.json)
+    # only knows Ubuntu up to 24.04 — `playwright install --with-deps` fails
+    # with "Playwright does not support chromium on ubuntu26.04-x64". Playwright
+    # first ships 26.04 support in 1.61.0; move this pin and that upgrade
+    # together. Same pin the other MADFAM Playwright jobs use (enclii, janua,
+    # ai-portfolio-builder, tezca, ceq, voxa, phynd-crm).
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
       # Single DB process — no inter-container DNS, no docker-compose drift,
